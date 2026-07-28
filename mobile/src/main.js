@@ -36,7 +36,7 @@ import { I } from './icons.js';
 import { patch, schedule, onScrollFrame, tap, buzz, selectionTick, nextTick } from './render.js';
 import {
   esc, cleanSynopsis, computeGroups, foldedSeasons, seasonDisplay, franchisePrimary,
-  franchiseShows, showIdOf, hasRelations, FRV_RELATIONS,
+  franchiseShows, showIdOf, hasRelations, FRV_RELATIONS, seasonEntriesOf,
   recHasDub, dubInfo, watchedSet, watchedOwner, groupProgress, episodesOf, epCount
 } from './fold.js';
 
@@ -284,7 +284,9 @@ function resolvePart(g, id) {
   return liteById.get(id) || null;
 }
 function mobileSeasons(g) {
-  const folded = foldedSeasons(g.rep.franchise?.length ? g.rep.franchise : g.members.map((m) => ({ ...m })));
+  const folded = foldedSeasons(g.rep.franchise?.length
+    ? seasonEntriesOf(g.rep.franchise, g.rep.id)
+    : g.members.map((m) => ({ ...m })));
   const seasons = [];
   for (const se of folded) seasons.push({ ...se, records: se.parts.map((p) => resolvePart(g, p.id) || { ...p, stub: true }) });
   for (const m of g.members) {

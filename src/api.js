@@ -669,7 +669,7 @@ async function fetchKitsuEpisodes(malId) {
 /* TVDB stills via ARM (mal id → tvdb id + season) and Sonarr's public Skyhook.
    This is the Plex-grade source — complete stills where Kitsu peters out. */
 const tvdbShowCache = new Map();
-async function fetchTvdbEpisodes(malId) {
+async function fetchTvdbEpisodes(malId, firstAired = null) {
   const empty = new Map();
   if (!malId || !window.hikari.fetchJson) return empty;
   try {
@@ -685,11 +685,33 @@ async function fetchTvdbEpisodes(malId) {
     }
     if (!show?.episodes) return empty;
 
+    /* A split cour is ONE season on TVDB and TWO entries on AniList: Slime
+       Season 2 Part 2 is episodes 1-12 to AniList and 13-24 to TVDB. Asking
+       for 1-12 therefore handed Part 2 the stills and overviews belonging to
+       Part 1 — the titles were right (those come from Jikan) but every image
+       was a duplicate.
+
+       Align on AIR DATE instead of trusting the numbering: find the TVDB
+       episode that aired when this entry's first episode aired, and shift the
+       whole season by that offset. Falls back to no shift when there is no
+       date to match on. */
+    const seasonEps = show.episodes
+      .filter((e) => e.seasonNumber === season && e.episodeNumber != null)
+      .sort((a, b) => a.episodeNumber - b.episodeNumber);
+
+    let offset = 0;
+    if (firstAired) {
+      const want = String(firstAired).slice(0, 10);
+      const hit = seasonEps.find((e) => String(e.airDate || '').slice(0, 10) === want);
+      if (hit) offset = hit.episodeNumber - 1;
+    }
+
     const map = new Map();
-    for (const e of show.episodes) {
-      if (e.seasonNumber !== season || e.episodeNumber == null) continue;
-      if (!map.has(e.episodeNumber)) {
-        map.set(e.episodeNumber, {
+    for (const e of seasonEps) {
+      const n = e.episodeNumber - offset;
+      if (n < 1) continue;
+      if (!map.has(n)) {
+        map.set(n, {
           title: e.title || '',
           thumbnail: e.image || '',
           aired: e.airDate || '',
@@ -897,7 +919,9 @@ async function enrichShow(mediaId, opts = {}) {
   let tvdb = new Map();
   if (m.idMal) {
     jikanRows = await fetchJikanEpisodes(m.idMal);
-    tvdb = await fetchTvdbEpisodes(m.idMal);
+    /* Jikan is per-AniList-entry, so its episode 1 air date identifies which
+       slice of the TVDB season this entry actually is. */
+    tvdb = await fetchTvdbEpisodes(m.idMal, jikanRows.find((r) => r.number === 1)?.aired || null);
     kitsu = tvdb.size >= (m.episodes || 1) ? kitsu : await fetchKitsuEpisodes(m.idMal);
   }
   const eps = mergeEpisodes(m.episodes, anilistEps, jikanRows, kitsu, tvdb);

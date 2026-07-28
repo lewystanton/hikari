@@ -203,6 +203,22 @@ export function isSeasonEntry(x) {
   return /(?:^|\s)(?:season\s*\d+|\d+(?:st|nd|rd|th)\s+season)(?:\s*(?:part|cour)\s*\d+)?\s*$/i
     .test(x.title || '');
 }
+/* Only the entries that belong to THIS show may be numbered.
+
+   The Slime Diaries is a TV series and a SPIN_OFF of Slime, so numbering
+   every TV entry made it "Season 3" and pushed the real Season 3 to 4 and
+   Season 4 to 5. Once relation types are present we already know which
+   entries form the continuity, so use that and let spin-offs and rival
+   adaptations fall out of the season list entirely. */
+export function seasonEntriesOf(fr, rootId) {
+  const list = fr || [];
+  if (!list.some((f) => Array.isArray(f.rel))) return list;   // pre-frv-4: unchanged
+  const map = showMapFor(list);
+  const mine = map.get(rootId);
+  if (mine == null) return list;
+  return list.filter((f) => map.get(f.id) === mine);
+}
+
 export function foldedSeasons(fr) {
   const strip = (t) => normTitle(String(t || '').replace(/\s*[-–—:·]?\s*(?:part|cour)\s*\d+\s*$/i, ''));
   const out = [];
@@ -230,7 +246,7 @@ export function franchisePrimary(fr, fallback = null) {
 
 export function seasonDisplay(g, c) {
   const owner = g.members.find((m) => (m.franchise || []).some((f) => f.id === c.id)) || g.rep;
-  const folded = foldedSeasons(owner.franchise);
+  const folded = foldedSeasons(seasonEntriesOf(owner.franchise, owner.id));
   const se = folded.find((x) => x.parts.some((p) => p.id === c.id));
   if (se?.num && folded.filter((x) => x.num).length > 1) return { name: g.rep.title, season: se.num };
   return { name: c.title, season: null };

@@ -254,7 +254,7 @@ function goShelf() {
 function initialViewFor(rootId) {
   const root = library.find((x) => x.id === rootId);
   if (!root) return rootId;
-  const seasons = foldedSeasons(root.franchise);
+  const seasons = foldedSeasons(seasonEntriesOf(root.franchise, root.id));
   if (!seasons.length) return rootId;
   const g = groupEntries(library).find((grp) => grp.members.some((m) => m.id === rootId));
   const watchedIn = (id) => {
@@ -1010,6 +1010,22 @@ function continueRailHTML() {
    Tensei looks like 5 seasons when the world (and Crunchyroll) counts 3.
    Fold consecutive TV entries whose titles differ only by a part marker into
    one season. TV_SHORT spin-offs (Break Time etc.) stay their own thing. */
+/* Only the entries that belong to THIS show may be numbered.
+
+   The Slime Diaries is a TV series and a SPIN_OFF of Slime, so numbering
+   every TV entry made it "Season 3" and pushed the real Season 3 to 4 and
+   Season 4 to 5. Once relation types are present we already know which
+   entries form the continuity, so use that and let spin-offs and rival
+   adaptations fall out of the season list entirely. */
+function seasonEntriesOf(fr, rootId) {
+  const list = fr || [];
+  if (!list.some((f) => Array.isArray(f.rel))) return list;   // pre-frv-4: unchanged
+  const map = showMapFor(list);
+  const mine = map.get(rootId);
+  if (mine == null) return list;
+  return list.filter((f) => map.get(f.id) === mine);
+}
+
 function foldedSeasons(fr) {
   const strip = (t) => normTitle(String(t || '').replace(/\s*[-–—:·]?\s*(?:part|cour)\s*\d+\s*$/i, ''));
   const out = [];
@@ -1043,7 +1059,7 @@ function franchisePrimary(fr, fallback = null) {
    Crunchyroll calls it. Spin-offs keep their own title, no chip. */
 function seasonDisplay(g, c) {
   const owner = g.members.find((m) => (m.franchise || []).some((f) => f.id === c.id)) || g.rep;
-  const folded = foldedSeasons(owner.franchise);
+  const folded = foldedSeasons(seasonEntriesOf(owner.franchise, owner.id));
   const se = folded.find((x) => x.parts.some((p) => p.id === c.id));
   if (se?.num && folded.filter((x) => x.num).length > 1) return { name: g.rep.title, season: se.num };
   return { name: c.title, season: null };
