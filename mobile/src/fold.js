@@ -60,38 +60,58 @@ export function showMapFor(entries) {
   const find = (x) => { while (parent.get(x) !== x) { parent.set(x, parent.get(parent.get(x))); x = parent.get(x); } return x; };
   const union = (a, b) => { const ra = find(a), rb = find(b); if (ra !== rb) parent.set(ra, rb); };
   const key = (a, b) => (a < b ? a + ':' + b : b + ':' + a);
-
   const alt = new Set();
+  /* what follows on FROM x, and what x follows on from — both directions are
+     needed, because a branch can appear at either end. */
   const cont = new Map(entries.map((e) => [e.id, new Set()]));
+  const from = new Map(entries.map((e) => [e.id, new Set()]));
   for (const e of entries) {
     for (const [other, r] of e.rel || []) {
       if (!byId.has(other)) continue;
       if (r === 'ALTERNATIVE') alt.add(key(e.id, other));
-      /* AniList records a fork from the CHILDREN's side — both Fate/stay night
-         and UBW name Fate/Zero S2 as their prequel, and Zero S2 names neither
-         as its sequel. Normalise both directions. */
-      if (r === 'SEQUEL') cont.get(e.id).add(other);
-      if (r === 'PREQUEL') cont.get(other)?.add(e.id);
+      /* AniList stores these from whichever side it feels like — Fate/Zero S2
+         lists no sequels, yet both Fate/stay night and UBW name it as their
+         prequel. Normalise both directions into one pair of maps. */
+      if (r === 'SEQUEL') { cont.get(e.id).add(other); from.get(other)?.add(e.id); }
+      if (r === 'PREQUEL') { cont.get(other)?.add(e.id); from.get(e.id).add(other); }
     }
   }
   /* Rivals are two full SERIES. A film ALTERNATIVE to a TV arc is a recut of
      it (Demon Slayer's Mugen Train), not a competing adaptation. */
   const rivals = (a, b) => alt.has(key(a, b))
     && FR_SERIES.has(byId.get(a)?.format) && FR_SERIES.has(byId.get(b)?.format);
-  const forked = new Set();
-  for (const [x, ys] of cont) {
-    const a = [...ys];
-    outer: for (let i = 0; i < a.length; i++)
+  /* A branch has two shapes and BOTH have to be caught.
+
+     DIVERGENCE — one work continues into two rivals. Fate/Zero leads into both
+     Fate/stay night and Unlimited Blade Works, which are rival adaptations, so
+     the three are separate shows.
+
+     CONVERGENCE — one work continues FROM two rivals. UQ Holder! is the sequel
+     to Negima! (2005) AND to Negima!? (2006), which are rival adaptations of
+     the same manga. Only checking divergence missed this entirely: each Negima
+     has a single sequel, so nothing looked forked, and UQ Holder merged with
+     both — dragging in three "seasons", a pile of films and a show called
+     Negima that has nothing to do with what you added. */
+  const forked = new Set();      // diverges: do not merge its continuations
+  const converged = new Set();   // converges: do not merge its sources
+  const hasRivalPair = (ids) => {
+    const a = [...ids];
+    for (let i = 0; i < a.length; i++)
       for (let j = i + 1; j < a.length; j++)
-        if (rivals(a[i], a[j])) { forked.add(x); break outer; }
-  }
+        if (rivals(a[i], a[j])) return true;
+    return false;
+  };
+  for (const [x, ys] of cont) if (hasRivalPair(ys)) forked.add(x);
+  for (const [x, ys] of from) if (hasRivalPair(ys)) converged.add(x);
 
   for (const e of entries) {
     for (const [other, r] of e.rel || []) {
       if (!byId.has(other)) continue;
       if (r === 'SUMMARY') { union(e.id, other); continue; }
-      if (r === 'SEQUEL') { if (!forked.has(e.id)) union(e.id, other); continue; }
-      if (r === 'PREQUEL') { if (!forked.has(other)) union(e.id, other); continue; }
+      /* e -SEQUEL-> other : blocked if e diverges, or if `other` converges */
+      if (r === 'SEQUEL') { if (!forked.has(e.id) && !converged.has(other)) union(e.id, other); continue; }
+      /* e -PREQUEL-> other : blocked if `other` diverges, or if e converges */
+      if (r === 'PREQUEL') { if (!forked.has(other) && !converged.has(e.id)) union(e.id, other); continue; }
       /* A side story that is itself a series is its own show, else Steins;Gate
          swallows ChaoS;HEAd and Robotics;Notes. */
       if (r === 'SIDE_STORY' || r === 'PARENT') {

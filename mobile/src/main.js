@@ -445,6 +445,7 @@ function cardHTML(g) {
         ${groupAiring(g) ? '<i class="badge air">ON AIR</i>' : ''}
         ${groupDub(g) ? '<i class="badge dub">DUB</i>' : ''}
       </span>
+      ${enriching.has(r.id) ? '<span class="card-load"><i></i></span>' : ''}
       <span class="ptt">${esc(r.title)}</span>
       ${p.total ? `<span class="prog ${done ? 'done' : ''}"><i style="width:${done ? 100 : pct}%"></i></span>` : ''}
     </span>
@@ -1338,7 +1339,15 @@ function keysSheetHTML(wrap) {
 }
 
 /* Folded away by default — it exists so a problem on the phone can be read
-   off the screen instead of guessed at from a description. */
+   off the screen instead of guessed at from a description.
+
+   `open` is set by the BROWSER when you expand a <details>, so it is not in
+   the markup — and every patch therefore rebuilt it closed. With the
+   background migration patching every couple of seconds, the panel snapped
+   shut while you were reading it. Keep the state in a variable so it survives
+   a re-render, rather than marking the element data-keep, which would freeze
+   the numbers it exists to show. */
+let diagOpen = false;
 function diagnosticsHTML() {
   const b = alBudget();
   const ago = (t) => {
@@ -1356,7 +1365,7 @@ function diagnosticsHTML() {
     ['App', `${__APP_VERSION__}${isNative() ? ' · device' : ' · browser'}`]
   ];
   return `
-  <details class="diag">
+  <details class="diag"${diagOpen ? ' open' : ''}>
     <summary>Diagnostics</summary>
     <div class="diag-b">
       ${rows.map(([k, v]) => `<p><b>${esc(k)}</b><span>${esc(String(v))}</span></p>`).join('')}
@@ -1405,6 +1414,7 @@ const isLiteRec = (r) => r && ((r.epv || 0) < 1 || !('franchise' in r));
 async function enrichAdded(id, quiet = false) {
   if (enriching.has(id)) return;
   enriching.add(id);
+  syncSoon();          // paint the "filling in…" state immediately
   try {
     const rec = state.library.find((r) => r.id === id);
     if (!rec) return;
@@ -1417,7 +1427,7 @@ async function enrichAdded(id, quiet = false) {
     if (!quiet) toast(`${fresh.title} — seasons & episodes filled in`);
   } catch (e) {
     console.warn('[enrich]', e.message || e);
-  } finally { enriching.delete(id); }
+  } finally { enriching.delete(id); syncSoon(); }
 }
 let bootEnrichDone = false;
 async function bootEnrich() {
@@ -2829,6 +2839,12 @@ document.addEventListener('click', async (e) => {
     }
   }
 });
+
+document.addEventListener('toggle', (e) => {
+  if (e.target instanceof HTMLDetailsElement && e.target.classList.contains('diag')) {
+    diagOpen = e.target.open;
+  }
+}, true);
 
 /* —— nothing fails silently ——
    A frozen app with no message is the worst thing to be handed, and there is

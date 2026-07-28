@@ -1,7 +1,7 @@
 {
   "name": "hikari",
   "productName": "Hikari",
-  "version": "2.25.1",
+  "version": "3.0.0",
   "description": "A beautiful personal anime library",
   "main": "main.js",
   "scripts": {
@@ -10,7 +10,8 @@
     "predist": "node scripts/clean-dist.mjs",
     "clean:dist": "node scripts/clean-dist.mjs --all",
     "dist:win": "electron-builder --win nsis",
-    "dist:mac": "electron-builder --mac dmg"
+    "dist:mac": "electron-builder --mac dmg",
+    "version": "node scripts/version.mjs"
   },
   "devDependencies": {
     "@phosphor-icons/core": "^2.1.1",

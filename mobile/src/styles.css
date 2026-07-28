@@ -1121,3 +1121,38 @@ h1,h2,h3{font-weight:800;letter-spacing:-.02em;font-family:var(--font-display)}
    nothing on screen to explain why. Only the visible state is interactive. */
 .sheetwrap:not(.on){pointer-events:none}
 .sheetwrap.on{pointer-events:auto}
+
+/* ── "this show is still filling in" ───────────────────────────────────────
+   Adding a show returns a lite record instantly, then the franchise walk,
+   episode merge and artwork pool land over the next several seconds. Nothing
+   said so, which read as a half-broken page rather than a loading one. */
+.fillbar{
+  display:flex;align-items:center;gap:10px;
+  margin:0 var(--gut) 14px;padding:10px 13px;border-radius:var(--r-m);
+  background:color-mix(in srgb, var(--accent) 12%, var(--surface));
+  border:1px solid color-mix(in srgb, var(--accent) 32%, transparent);
+  font-size:12px;color:var(--ink-2);
+}
+.fill-dot{
+  width:8px;height:8px;border-radius:50%;flex:0 0 auto;
+  background:var(--accent);animation:fillpulse 1.25s ease-in-out infinite;
+}
+@keyframes fillpulse{0%,100%{opacity:.35;transform:scale(.8)}50%{opacity:1;transform:scale(1)}}
+
+.card-load{
+  position:absolute;left:7px;top:7px;z-index:3;
+  width:18px;height:18px;border-radius:50%;
+  background:rgba(8,8,11,.72);backdrop-filter:blur(8px);
+  display:grid;place-items:center;
+}
+.card-load i{
+  width:9px;height:9px;border-radius:50%;
+  border:1.5px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  border-top-color:var(--accent);
+  animation:spin .8s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+@media (prefers-reduced-motion: reduce){
+  .fill-dot,.card-load i{animation:none}
+}
