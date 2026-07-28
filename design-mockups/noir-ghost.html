@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>HIKARI — Noir · Ghost</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0A0A0C; --glass:rgba(14,14,18,.6); --glass2:rgba(18,18,23,.5); --line:rgba(255,255,255,.08);
+  --txt:#F2F2F4; --dim:#98979F; --faint:#5C5B64; --grn:#4EDCA8; --show:#E4A15D;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%;overflow:hidden}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--txt);font-size:13px;
+  display:grid;grid-template-rows:34px 1fr 40px}
+.mono{font-family:'JetBrains Mono',monospace}
+
+.amb{position:fixed;inset:0;z-index:0;pointer-events:none}
+.amb img{width:100%;height:100%;object-fit:cover;filter:blur(80px) saturate(.4) brightness(.22);transform:scale(1.3)}
+.amb::after{content:"";position:absolute;inset:0;background:rgba(10,10,12,.55)}
+
+.tbar{position:relative;z-index:10;display:flex;align-items:center;background:rgba(8,8,10,.76);backdrop-filter:blur(14px);
+  border-bottom:1px solid var(--line);padding-left:12px;-webkit-app-region:drag;user-select:none}
+.tbar .mark{width:14px;height:14px;margin-right:8px;opacity:.92}
+.tbar b{font-size:10.5px;letter-spacing:.28em;font-weight:600}
+.tbar .ver{font-size:9px;color:var(--faint);margin-left:10px;letter-spacing:.1em}
+.wbtns{margin-left:auto;display:flex;height:100%}
+.wb{width:44px;display:grid;place-items:center;color:var(--dim);font-size:11px}
+.wb:hover{background:rgba(255,255,255,.07)}
+.wb.x:hover{background:#D24B4B;color:#fff}
+
+.app{position:relative;z-index:1;display:grid;grid-template-columns:58px 1fr;min-height:0}
+.irail{background:var(--glass);backdrop-filter:blur(20px);border-right:1px solid var(--line);
+  display:flex;flex-direction:column;align-items:center;padding:12px 0;gap:6px}
+.ii{width:38px;height:38px;display:grid;place-items:center;border-radius:11px;color:var(--faint);font-size:15px;cursor:pointer;position:relative}
+.ii:hover{color:var(--txt);background:rgba(255,255,255,.06)}
+.ii.on{color:#fff;background:rgba(255,255,255,.1);box-shadow:inset 0 0 0 1px rgba(255,255,255,.22)}
+.ii .n{position:absolute;top:1px;right:1px;min-width:13px;height:13px;border-radius:7px;background:#fff;color:#0A0A0C;
+  font-size:8px;font-weight:700;display:grid;place-items:center;padding:0 3px}
+.irail .gap{flex:1}
+
+.main{display:flex;flex-direction:column;min-width:0;min-height:0}
+.topbar{display:flex;align-items:center;gap:10px;padding:10px 20px;border-bottom:1px solid var(--line);
+  background:var(--glass2);backdrop-filter:blur(18px)}
+.crumb{font-size:12px;color:var(--faint)}
+.crumb b{color:var(--txt);font-weight:600}
+.srch{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.05);border:1px solid var(--line);
+  border-radius:10px;padding:7px 12px;color:var(--faint);width:260px;font-size:12px;margin-left:14px}
+.srch kbd{margin-left:auto;font-size:9px;background:rgba(255,255,255,.07);padding:2px 6px;border-radius:4px}
+.chips{display:flex;gap:6px;margin-left:4px}
+.chip{padding:6px 13px;border-radius:999px;font-size:11.5px;font-weight:500;color:var(--dim);cursor:pointer;border:1px solid transparent}
+.chip.on{color:#0A0A0C;background:#EDEDF0;font-weight:600}
+.tb-r{margin-left:auto;display:flex;gap:8px;color:var(--dim);font-size:11.5px}
+.sel{background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:8px;padding:6px 11px}
+
+.scroll{overflow-y:auto;min-height:0;flex:1}
+.scroll::-webkit-scrollbar{width:9px}
+.scroll::-webkit-scrollbar-thumb{background:#26262C;border-radius:8px}
+
+/* split billboard */
+.bill{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(300px,1fr);height:308px;border-bottom:1px solid var(--line)}
+.bill .art{position:relative;overflow:hidden}
+.bill .art img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 24%}
+.bill .art::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent 62%,rgba(10,10,12,.92))}
+.bill .info{background:var(--glass2);backdrop-filter:blur(20px);padding:26px 28px;display:flex;flex-direction:column;justify-content:center;border-left:1px solid var(--line)}
+.bill .kick{font-size:9.5px;letter-spacing:.32em;color:var(--dim);font-weight:600;margin-bottom:12px}
+.bill .kick i{font-style:normal;color:var(--show)}
+.bill h2{font-size:31px;font-weight:800;letter-spacing:-.015em;line-height:1.05}
+.bill .jp{font-size:11px;color:var(--faint);letter-spacing:.36em;margin-top:8px}
+.bill .meta{display:flex;gap:14px;font-size:11.5px;color:var(--dim);margin:16px 0 6px;flex-wrap:wrap}
+.bill .meta b{color:var(--txt)}
+.bill .meta .acc{color:var(--show);font-weight:700}
+.bill p{font-size:12px;color:var(--dim);line-height:1.65;margin-top:6px;
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.bill .bact{display:flex;gap:10px;margin-top:20px}
+.pb{display:inline-flex;align-items:center;gap:9px;padding:11px 20px;border-radius:11px;font-size:12.5px;font-weight:700;cursor:pointer;border:none}
+.pb.go{background:#F2F2F4;color:#0A0A0C}
+.pb.go:hover{background:#fff;box-shadow:0 0 24px rgba(255,255,255,.25)}
+.pb.gh{background:rgba(255,255,255,.06);color:var(--txt);border:1px solid var(--line)}
+
+.row{padding:18px 24px 0}
+.rh{display:flex;align-items:baseline;gap:12px;margin-bottom:11px}
+.rh h3{font-size:11px;font-weight:700;letter-spacing:.24em;color:var(--dim)}
+.rh .n{font-size:10px;color:var(--faint)}
+.rh .all{margin-left:auto;font-size:10.5px;color:var(--faint);cursor:pointer}
+.rh .all:hover{color:var(--txt)}
+.hs{display:flex;align-items:flex-start;gap:12px;overflow-x:auto;padding:2px 2px 14px;
+  mask-image:linear-gradient(90deg,#000 96%,transparent)}
+.hs::-webkit-scrollbar{height:0}
+.cc{flex:0 0 252px;min-width:0;width:252px;border-radius:12px;overflow:hidden;position:relative;cursor:pointer;
+  border:1px solid var(--line);background:var(--glass2);backdrop-filter:blur(8px);transition:.18s}
+.cc:hover{border-color:rgba(255,255,255,.3)}
+.cc img{width:100%;height:124px;object-fit:cover;display:block}
+.cc .ov{position:absolute;left:0;right:0;top:0;height:124px;background:linear-gradient(0deg,rgba(10,10,12,.8),transparent 55%)}
+.cc .ep{position:absolute;left:11px;top:96px;font-size:10.5px;font-weight:700;font-family:'JetBrains Mono'}
+.cc .inf{padding:9px 12px 11px}
+.cc .t{font-size:11.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cc .m{font-size:9.5px;color:var(--dim);margin-top:3px}
+.cc .bar{height:3px;border-radius:3px;background:rgba(255,255,255,.09);margin-top:8px;overflow:hidden}
+.cc .bar i{display:block;height:100%}
+.at{flex:0 0 216px;min-width:0;width:216px;display:flex;gap:11px;background:var(--glass2);backdrop-filter:blur(8px);
+  border:1px solid var(--line);border-radius:12px;padding:10px;cursor:pointer;align-items:center}
+.at:hover{border-color:rgba(255,255,255,.3)}
+.at img{width:38px;height:54px;object-fit:cover;border-radius:7px}
+.at .tt{font-size:11px;font-weight:500;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.at .cd{font-size:9.5px;margin-top:4px;color:var(--dim)}
+.at .cd b{color:var(--grn)}.at .cd b.now{color:#fff}
+.at .cd .dub{color:var(--dim);margin-left:6px;font-size:8.5px;border:1px solid var(--line);padding:1px 4px;border-radius:3px}
+
+/* grid — larger, minimal */
+.gridwrap{padding:6px 24px 26px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(176px,1fr));gap:18px 14px}
+.pc{cursor:pointer}
+.pc .im{position:relative;border-radius:13px;overflow:hidden;border:1px solid var(--line);transition:.18s}
+.pc img{width:100%;aspect-ratio:2/2.95;object-fit:cover;display:block}
+.pc .sc{position:absolute;top:8px;left:8px;font-size:9px;font-weight:600;font-family:'JetBrains Mono';
+  background:rgba(10,10,12,.7);backdrop-filter:blur(8px);padding:3px 8px;border-radius:6px;border:1px solid var(--line)}
+.pc .bdg{position:absolute;top:8px;right:8px;display:flex;flex-direction:column;gap:4px;align-items:flex-end}
+.bdg i{font-style:normal;font-size:7.5px;font-weight:700;letter-spacing:.12em;padding:3px 6px;border-radius:5px;
+  background:rgba(10,10,12,.66);backdrop-filter:blur(6px);border:1px solid var(--line);color:var(--dim)}
+.bdg i.fav{color:#fff}
+.pc .t{font-size:12px;font-weight:600;margin-top:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pc .m{display:flex;align-items:center;gap:7px;font-size:10px;color:var(--faint);margin-top:3px}
+.pc .m .cdot{width:7px;height:7px;border-radius:2.5px;flex:none}
+.pc .ul{height:2.5px;border-radius:3px;background:rgba(255,255,255,.07);margin-top:8px;overflow:hidden}
+.pc .ul i{display:block;height:100%}
+
+/* ═══════ DETAIL — cinematic centered ═══════ */
+.dhero{position:relative;height:400px;overflow:hidden}
+.dhero>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 22%}
+.dhero .sh{position:absolute;inset:0;background:linear-gradient(0deg,var(--bg) 4%,rgba(10,10,12,.3) 52%,rgba(10,10,12,.35))}
+.dback{position:absolute;top:14px;left:16px;z-index:3;display:inline-flex;align-items:center;gap:8px;
+  background:rgba(10,10,12,.6);backdrop-filter:blur(10px);border:1px solid var(--line);border-radius:10px;
+  padding:8px 14px;font-size:11.5px;color:var(--dim);cursor:pointer}
+.dback:hover{color:#fff;border-color:rgba(255,255,255,.35)}
+.dhero .tt{position:absolute;left:0;right:0;bottom:26px;text-align:center}
+.dhero .kick{font-size:9.5px;letter-spacing:.4em;color:var(--dim);font-weight:600;margin-bottom:12px}
+.dhero .kick i{font-style:normal;color:var(--show)}
+.dhero h2{font-size:52px;font-weight:800;letter-spacing:-.02em;line-height:1;text-shadow:0 4px 34px rgba(0,0,0,.7)}
+.dhero .jp{font-size:12px;color:var(--dim);letter-spacing:.5em;margin-top:12px}
+.dwrap{max-width:920px;margin:0 auto;padding:24px 28px 40px}
+.dctr{display:flex;justify-content:center;gap:9px;flex-wrap:wrap;margin-bottom:18px}
+.mchip{font-size:10.5px;font-weight:600;padding:5px 12px;border-radius:999px;background:rgba(255,255,255,.05);
+  border:1px solid var(--line);color:var(--dim)}
+.mchip.w{color:#0A0A0C;background:#F2F2F4}
+.mchip.a{color:var(--show);border-color:color-mix(in srgb,var(--show) 50%,transparent)}
+.dacts{display:flex;justify-content:center;gap:10px;margin-bottom:26px}
+.dsyn{font-size:13px;line-height:1.8;color:var(--dim);text-align:center;max-width:720px;margin:0 auto 30px}
+.dsub{display:flex;align-items:center;gap:14px;margin:26px 0 14px}
+.dsub h3{font-size:11px;font-weight:700;letter-spacing:.26em;color:var(--dim)}
+.dsub .ln{flex:1;height:1px;background:var(--line)}
+.dsub .n{font-size:10px;color:var(--faint)}
+.spills{display:flex;justify-content:center;gap:8px;margin-bottom:18px}
+.spill{padding:8px 18px;border-radius:999px;font-size:11.5px;font-weight:600;color:var(--dim);cursor:pointer;
+  background:rgba(255,255,255,.04);border:1px solid var(--line)}
+.spill.on{color:#0A0A0C;background:#F2F2F4}
+.spill .d{font-size:9px;opacity:.6;margin-left:6px}
+/* episode rows */
+.eprow{display:flex;align-items:center;gap:16px;padding:13px 16px;border-radius:12px;cursor:pointer;
+  border:1px solid transparent;transition:.14s}
+.eprow:hover{background:var(--glass2);border-color:var(--line)}
+.eprow.next{background:var(--glass2);border-color:rgba(255,255,255,.22)}
+.eprow .no{font-family:'JetBrains Mono';font-size:13px;color:var(--faint);width:32px;text-align:right}
+.eprow.next .no{color:#fff}
+.eprow .ply{width:34px;height:34px;border-radius:50%;border:1px solid var(--line);display:grid;place-items:center;
+  font-size:11px;color:var(--dim);flex:none}
+.eprow.next .ply{background:#F2F2F4;color:#0A0A0C;border-color:transparent}
+.eprow .tx{flex:1;min-width:0}
+.eprow .et{font-size:13px;font-weight:600}
+.eprow .em{font-size:10px;color:var(--faint);margin-top:3px}
+.eprow .tags{display:flex;gap:6px;flex:none}
+.tag{font-size:8px;font-weight:700;letter-spacing:.12em;padding:3px 7px;border-radius:5px;border:1px solid var(--line);color:var(--dim)}
+.tag.loc{color:var(--grn);border-color:rgba(78,220,168,.45)}
+.tag.dub{color:var(--show);border-color:color-mix(in srgb,var(--show) 45%,transparent)}
+.eprow .st{width:22px;text-align:center;color:var(--grn);font-size:13px;flex:none}
+.eprow .st.o{color:var(--faint)}
+.eprow .prg{position:relative;width:64px;height:3px;border-radius:3px;background:rgba(255,255,255,.08);flex:none;overflow:hidden}
+.eprow .prg i{position:absolute;left:0;top:0;bottom:0;background:var(--show)}
+/* info band + recs */
+.band{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);border:1px solid var(--line);
+  border-radius:13px;overflow:hidden;margin:26px 0}
+.band div{background:rgba(14,14,18,.72);padding:13px 16px}
+.band .k{font-size:8px;letter-spacing:.24em;color:var(--faint);margin-bottom:5px}
+.band .v{font-size:12.5px;font-weight:600}
+.band .v.a{color:var(--show)}
+
+.qbar{position:relative;z-index:10;display:flex;align-items:center;gap:14px;background:rgba(8,8,10,.76);
+  backdrop-filter:blur(14px);border-top:1px solid var(--line);padding:0 14px;font-size:10.5px;color:var(--dim)}
+.qbar .spin{width:11px;height:11px;border:2px solid rgba(255,255,255,.18);border-top-color:#fff;border-radius:50%;animation:sp 1s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.qbar .qp{width:120px;height:3.5px;background:rgba(255,255,255,.08);border-radius:4px;overflow:hidden}
+.qbar .qp i{display:block;height:100%;width:42%;background:#EDEDF0}
+.qbar b{color:var(--txt);font-weight:500}
+.qbar .right{margin-left:auto;display:flex;gap:12px}
+.qbar .ok{color:var(--grn)}
+</style>
+</head>
+<body>
+  <div class="amb"><img id="amb" alt=""></div>
+
+  <div class="tbar">
+    <svg class="mark" viewBox="0 0 24 24" fill="none" stroke="#F2F2F4" stroke-width="2"><path d="M3 7h18M5 7l1.2-3h11.6L19 7M7 7v13M17 7v13M4 20h16"/></svg>
+    <b>HIKARI</b><span class="ver mono">v2.0 — NOIR · GHOST</span>
+    <div class="wbtns"><div class="wb">—</div><div class="wb">▢</div><div class="wb x">✕</div></div>
+  </div>
+
+  <div class="app">
+    <aside class="irail">
+      <div class="ii on" title="Library">▦</div>
+      <div class="ii" title="Airing">◉<span class="n" id="nAir"></span></div>
+      <div class="ii" title="Favourites">♥</div>
+      <div class="ii" title="Dubbed">◭</div>
+      <div class="ii" title="Local">⛁</div>
+      <div class="ii" title="Import">⇣</div>
+      <div class="gap"></div>
+      <div class="ii" title="Settings">⚙</div>
+    </aside>
+
+    <div class="main">
+      <div class="topbar">
+        <span class="crumb">Library / <b>All shows</b></span>
+        <div class="srch">⌕ Search 167 shows… <kbd>Ctrl K</kbd></div>
+        <div class="chips">
+          <div class="chip on">All</div><div class="chip">Airing</div><div class="chip">Dubbed</div><div class="chip">Local</div>
+        </div>
+        <div class="tb-r"><div class="sel">Airdate ↓</div></div>
+      </div>
+
+      <!-- HOME -->
+      <div class="scroll" id="home">
+        <div class="bill">
+          <div class="art"><img id="bImg" alt=""></div>
+          <div class="info">
+            <div class="kick"><i>●</i>&nbsp; CONTINUE WATCHING</div>
+            <h2 id="bTitle"></h2>
+            <div class="jp" id="bJp"></div>
+            <div class="meta" id="bMeta"></div>
+            <p id="bDesc"></p>
+            <div class="bact">
+              <button class="pb go" onclick="openDetail()">▶ Resume E6</button>
+              <button class="pb gh" onclick="openDetail()">Details</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="rh"><h3>CONTINUE</h3><span class="n" id="cwN"></span><span class="all">See all →</span></div>
+          <div class="hs" id="cw"></div>
+        </div>
+
+        <div class="row">
+          <div class="rh"><h3>ON AIR</h3><span class="n" id="airN"></span><span class="all">Calendar →</span></div>
+          <div class="hs" id="air"></div>
+        </div>
+
+        <div class="row"><div class="rh"><h3>LIBRARY</h3><span class="n" id="libN"></span></div></div>
+        <div class="gridwrap"><div class="grid" id="grid"></div></div>
+      </div>
+
+      <!-- DETAIL -->
+      <div class="scroll" id="detail" hidden>
+        <div class="dhero">
+          <img id="dBan" alt=""><div class="sh"></div>
+          <div class="dback" onclick="closeDetail()">← Library</div>
+          <div class="tt">
+            <div class="kick"><i>●</i>&nbsp; TV · 2020 · MAPPA · S2 DUB ROLLING OUT</div>
+            <h2 id="dTitle"></h2>
+            <div class="jp" id="dJp"></div>
+          </div>
+        </div>
+        <div class="dwrap">
+          <div class="dctr" id="dMeta"></div>
+          <div class="dacts">
+            <button class="pb go">▶ Resume S2 E6 · on disk</button>
+            <button class="pb gh">♥ Favourite</button>
+            <button class="pb gh">✓ Mark season</button>
+          </div>
+          <p class="dsyn" id="dSyn"></p>
+
+          <div class="band" id="dBand"></div>
+
+          <div class="dsub"><h3>EPISODES</h3><div class="ln"></div><span class="n">SEASON 2 · 5 OF 23 · NEXT DUB EP 21 — SAT 15:00</span></div>
+          <div class="spills">
+            <div class="spill">Season 1<span class="d">24</span></div>
+            <div class="spill on">Season 2<span class="d">23</span></div>
+            <div class="spill">JJK 0 · Movie</div>
+          </div>
+          <div id="eps"></div>
+
+          <div class="dsub"><h3>MORE LIKE THIS</h3><div class="ln"></div></div>
+          <div class="hs" id="recs"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="qbar">
+    <div class="spin"></div>
+    <span>Converting <b>Solo Leveling — E07</b></span>
+    <div class="qp"><i></i></div><span class="mono">42%</span><span>· 3 queued</span>
+    <div class="right"><span class="ok">● AniList</span><span class="ok">● AnimeSchedule</span><span class="mono" id="clock"></span></div>
+  </div>
+
+<script src="data.js"></script>
+<script>
+const D=window.HIKARI_DATA,$=id=>document.getElementById(id);
+const days=['SUN','MON','TUE','WED','THU','FRI','SAT'];
+document.documentElement.style.setProperty('--show',D.hero.color||'#E4A15D');
+function openDetail(){$('home').hidden=true;$('detail').hidden=false;$('detail').scrollTop=0}
+function closeDetail(){$('detail').hidden=true;$('home').hidden=false}
+function cd(at){const s=at*1000-Date.now();if(s<=0)return'<b class="now">OUT NOW</b>';
+ const d=Math.floor(s/86400e3),h=Math.floor(s%86400e3/3600e3);const dt=new Date(at*1000);
+ return `<b>${days[dt.getDay()]} ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}</b> · ${d?d+'d ':''}${h}h`;}
+$('amb').src=D.hero.banner;
+$('nAir').textContent=D.airing.length;
+$('bImg').src=D.hero.banner;$('bTitle').textContent=D.hero.title;$('bJp').textContent=D.hero.native;
+$('bMeta').innerHTML=`<span class="acc">★ ${D.hero.score}</span><span><b>${D.hero.format}</b> · ${D.hero.year}</span>
+ <span>${D.hero.studio}</span><span>EN DUB</span>`;
+$('bDesc').textContent=D.hero.desc;
+$('cwN').textContent=D.cw.length+' shows';
+$('cw').innerHTML=D.cw.map(s=>`<div class="cc" onclick="openDetail()"><img src="${s.banner||s.cover}"><div class="ov"></div>
+ <span class="ep">E${s.watched+1} READY</span>
+ <div class="inf"><div class="t">${s.title}</div><div class="m">${s.episodes-s.watched} episodes left</div>
+ <div class="bar"><i style="width:${Math.round(s.watched/s.episodes*100)}%;background:${s.color||'#EDEDF0'}"></i></div></div></div>`).join('');
+$('airN').textContent=D.airing.length+' broadcasts';
+$('air').innerHTML=D.airing.map(a=>`<div class="at" onclick="openDetail()"><img src="${a.cover}"><div>
+ <div class="tt">${a.title}</div><div class="cd">EP ${a.ep} · ${cd(a.at)}${a.dub?'<span class="dub">DUB</span>':''}</div></div></div>`).join('');
+$('libN').textContent=D.stats.shows+' shows · sorted by airdate';
+$('grid').innerHTML=D.grid.map(s=>{const c=s.color||'#EDEDF0';
+ return `<div class="pc" onclick="openDetail()">
+ <div class="im" onmouseover="this.style.boxShadow='0 0 0 1.5px ${c}, 0 16px 40px -16px ${c}66'" onmouseout="this.style.boxShadow='none'">
+ <img loading="lazy" src="${s.cover}">
+ <span class="sc">${s.score||'—'}</span>
+ <span class="bdg">${s.fav?'<i class="fav">♥</i>':''}${s.dub?'<i>DUB</i>':''}${s.local?`<i>HDD ${s.local}</i>`:''}</span>
+ </div>
+ <div class="t">${s.title}</div>
+ <div class="m"><span class="cdot" style="background:${c}"></span>${s.year} · ${s.format}${s.genres[0]?' · '+s.genres[0]:''}</div>
+ ${s.watched?`<div class="ul"><i style="width:${Math.min(100,Math.round(s.watched/(s.episodes||12)*100))}%;background:${c}"></i></div>`:''}
+</div>`}).join('');
+/* detail */
+$('dBan').src=D.hero.banner;$('dTitle').textContent=D.hero.title;$('dJp').textContent=D.hero.native;
+$('dMeta').innerHTML=`<span class="mchip a">★ ${D.hero.score}</span><span class="mchip">${D.hero.format} · ${D.hero.year} · 24m</span>`
+ +D.hero.genres.map(g=>`<span class="mchip">${g}</span>`).join('')+`<span class="mchip w">EN DUB</span>`;
+$('dSyn').textContent=D.hero.desc+'…';
+$('dBand').innerHTML=[['STATUS','FINISHED'],['NEXT DUB','<span class="a">EP 21 · SAT 15:00</span>'],['ON DISK','12 files · 8.1 GB'],['SOURCE','CRUNCHYROLL']]
+ .map(([k,v])=>`<div><div class="k">${k}</div><div class="v">${v}</div></div>`).join('');
+const EPS=[[1,'Ryomen Sukuna',1],[2,'For Myself',1],[3,'Girl of Steel',1],[4,'Curse Womb Must Die',1],
+ [5,'Curse Womb Must Die -II-',1],[6,'After Rain',2],[7,'Assault',3],[8,'Boredom',0]];
+$('eps').innerHTML=EPS.map(([n,t,st])=>`<div class="eprow ${st===2?'next':''}">
+ <span class="no">${String(n).padStart(2,'0')}</span>
+ <span class="ply">▶</span>
+ <div class="tx"><div class="et">${t}</div><div class="em">24 min · aired Jul 2023${st===2?' · resume from 12:40':''}</div></div>
+ <div class="tags">${n<8?'<span class="tag dub">DUB</span>':'<span class="tag">SUB ONLY</span>'}
+  ${st===2?'<span class="tag loc">LOCAL</span>':st===3?'<span class="tag loc">LOCAL</span>':''}</div>
+ ${st===2?'<div class="prg"><i style="width:52%"></i></div>':''}
+ <span class="st ${st===1?'':'o'}">${st===1?'✓':'○'}</span></div>`).join('');
+$('recs').innerHTML=D.grid.filter(s=>s.genres.includes('Action')).slice(0,8).map(s=>`<div class="cc" style="flex:0 0 150px;width:150px" onclick="closeDetail()">
+ <img src="${s.cover}" style="height:200px"><div class="inf"><div class="t">${s.title}</div></div></div>`).join('');
+const tick=()=>{$('clock').textContent=new Date().toTimeString().slice(0,5)};tick();setInterval(tick,30e3);
+</script>
+</body>
+</html>

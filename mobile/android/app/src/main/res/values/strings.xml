@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Hikari</string>
+    <string name="title_activity_main">Hikari</string>
+    <string name="package_name">dev.lewis.hikari</string>
+    <string name="custom_url_scheme">dev.lewis.hikari</string>
+</resources>

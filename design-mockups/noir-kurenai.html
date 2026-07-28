@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>HIKARI — Noir · Kurenai</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&family=Zen+Old+Mincho:wght@700;900&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0C0D14; --glass:rgba(16,17,28,.62); --glass2:rgba(20,21,34,.5); --line:rgba(255,150,160,.09);
+  --line2:rgba(255,255,255,.07); --txt:#F0EDF2; --dim:#9A93A8; --faint:#5F5A70;
+  --red:#FF4B5C; --org:#FFB86B; --grn:#4EDCA8;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%;overflow:hidden}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--txt);font-size:13px;
+  display:grid;grid-template-rows:34px 1fr 42px}
+.mono{font-family:'JetBrains Mono',monospace}
+.mincho{font-family:'Zen Old Mincho',serif}
+
+.amb{position:fixed;inset:0;z-index:0;pointer-events:none}
+.amb img{width:100%;height:100%;object-fit:cover;filter:blur(70px) saturate(1.2) brightness(.3);transform:scale(1.3)}
+.amb::after{content:"";position:absolute;inset:0;background:radial-gradient(1000px 560px at 78% -8%,rgba(255,75,92,.13),transparent 60%),rgba(12,13,20,.5)}
+
+.tbar{position:relative;z-index:10;display:flex;align-items:center;background:rgba(9,10,16,.74);backdrop-filter:blur(14px);
+  border-bottom:1px solid var(--line2);padding-left:12px;-webkit-app-region:drag;user-select:none}
+.tbar .mark{width:14px;height:14px;margin-right:8px}
+.tbar b{font-size:10.5px;letter-spacing:.28em;font-weight:600}
+.tbar .ver{font-size:9px;color:var(--faint);margin-left:10px;letter-spacing:.1em}
+.wbtns{margin-left:auto;display:flex;height:100%}
+.wb{width:44px;display:grid;place-items:center;color:var(--dim);font-size:11px}
+.wb:hover{background:rgba(255,255,255,.07)}
+.wb.x:hover{background:#D24B4B;color:#fff}
+
+.app{position:relative;z-index:1;display:grid;grid-template-columns:210px 1fr;min-height:0}
+.rail{background:var(--glass);backdrop-filter:blur(22px);border-right:1px solid var(--line2);padding:14px 10px;overflow-y:auto}
+.grp{font-size:9px;letter-spacing:.24em;color:var(--faint);padding:14px 10px 7px}
+.ri{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:9px;color:var(--dim);cursor:pointer;margin-bottom:1px}
+.ri:hover{background:rgba(255,255,255,.05);color:var(--txt)}
+.ri.on{background:rgba(255,75,92,.13);color:var(--txt);box-shadow:inset 0 0 0 1px rgba(255,75,92,.35),0 0 18px rgba(255,75,92,.1)}
+.ri .ic{width:16px;text-align:center;font-size:13px}
+.ri .n{margin-left:auto;font-size:10px;color:var(--faint);background:rgba(255,255,255,.06);padding:2px 7px;border-radius:8px}
+.ri.on .n{color:var(--red);background:rgba(255,75,92,.15)}
+
+.main{display:flex;flex-direction:column;min-width:0;min-height:0}
+.topbar{display:flex;align-items:center;gap:10px;padding:10px 18px;border-bottom:1px solid var(--line2);
+  background:var(--glass2);backdrop-filter:blur(18px)}
+.srch{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.05);border:1px solid var(--line2);
+  border-radius:10px;padding:7px 12px;color:var(--faint);width:270px;font-size:12px}
+.srch kbd{margin-left:auto;font-size:9px;background:rgba(255,255,255,.07);padding:2px 6px;border-radius:4px}
+.chips{display:flex;gap:6px;margin-left:6px}
+.chip{padding:6px 13px;border-radius:999px;font-size:11.5px;font-weight:500;color:var(--dim);cursor:pointer;border:1px solid transparent}
+.chip.on{color:#fff;border-color:rgba(255,75,92,.55);background:rgba(255,75,92,.15);box-shadow:0 0 14px rgba(255,75,92,.22)}
+.tb-r{margin-left:auto;display:flex;gap:8px;color:var(--dim);font-size:11.5px}
+.sel{background:rgba(255,255,255,.05);border:1px solid var(--line2);border-radius:8px;padding:6px 11px}
+
+.scroll{overflow-y:auto;min-height:0;flex:1}
+.scroll::-webkit-scrollbar{width:9px}
+.scroll::-webkit-scrollbar-thumb{background:#2C2436;border-radius:8px}
+
+/* billboard w/ ghost kanji */
+.bill{position:relative;height:318px;overflow:hidden;border-bottom:1px solid var(--line2)}
+.bill>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 24%}
+.bill .sh{position:absolute;inset:0;background:linear-gradient(0deg,var(--bg) 0%,rgba(12,13,20,.3) 42%,rgba(12,13,20,.3)),
+  linear-gradient(90deg,rgba(12,13,20,.85),transparent 55%)}
+.bill .kanji{position:absolute;right:-10px;top:-34px;font-size:190px;line-height:1;color:rgba(255,75,92,.1);
+  font-weight:900;letter-spacing:-.04em;pointer-events:none;writing-mode:vertical-rl}
+.bill .in{position:absolute;left:26px;right:26px;bottom:20px;display:flex;align-items:flex-end;gap:20px}
+.bill .kick{font-size:10px;letter-spacing:.34em;color:var(--red);font-weight:700;margin-bottom:10px}
+.bill h2{font-size:36px;font-weight:800;letter-spacing:-.015em;text-shadow:0 2px 24px rgba(0,0,0,.6)}
+.bill .sub{display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap}
+.gchip{font-size:10.5px;font-weight:600;padding:5px 11px;border-radius:999px;background:rgba(14,15,24,.55);
+  backdrop-filter:blur(10px);border:1px solid var(--line2);color:var(--dim)}
+.gchip.r{color:var(--red);border-color:rgba(255,75,92,.5)}
+.gchip.o{color:var(--org);border-color:rgba(255,184,107,.5)}
+.bact{margin-left:auto;display:flex;gap:9px;flex:none}
+.pb{display:inline-flex;align-items:center;gap:9px;padding:12px 22px;border-radius:12px;font-size:12.5px;font-weight:700;cursor:pointer;border:none}
+.pb.go{background:linear-gradient(90deg,var(--red),#FF7A6B);color:#1C0508;box-shadow:0 0 26px rgba(255,75,92,.4)}
+.pb.go:hover{box-shadow:0 0 40px rgba(255,75,92,.65)}
+.pb.gh{background:rgba(14,15,24,.55);backdrop-filter:blur(10px);color:var(--txt);border:1px solid var(--line2)}
+
+.row{padding:18px 26px 0}
+.rh{display:flex;align-items:baseline;gap:12px;margin-bottom:11px}
+.rh h3{font-size:12px;font-weight:700;letter-spacing:.2em}
+.rh h3 i{font-style:normal;color:var(--red);margin-right:8px}
+.rh .n{font-size:10px;color:var(--faint)}
+.rh .all{margin-left:auto;font-size:11px;color:var(--faint);cursor:pointer}
+.hs{display:flex;align-items:flex-start;gap:13px;overflow-x:auto;padding:2px 2px 14px;
+  mask-image:linear-gradient(90deg,#000 96%,transparent)}
+.hs::-webkit-scrollbar{height:0}
+/* continue: portrait minis w/ EP badge */
+.cm{flex:0 0 128px;min-width:0;width:128px;cursor:pointer;position:relative}
+.cm .im{position:relative;border-radius:12px;overflow:hidden;border:1px solid var(--line2);transition:.2s}
+.cm:hover .im{border-color:rgba(255,75,92,.55);box-shadow:0 0 22px rgba(255,75,92,.25);transform:translateY(-3px)}
+.cm img{width:100%;aspect-ratio:2/2.9;object-fit:cover;display:block}
+.cm .veil{position:absolute;inset:0;background:linear-gradient(0deg,rgba(12,13,20,.85),transparent 45%)}
+.cm .eb{position:absolute;left:8px;bottom:26px;font-family:'JetBrains Mono';font-size:14px;font-weight:600;color:var(--org)}
+.cm .lf{position:absolute;left:8px;bottom:10px;font-size:9px;color:var(--dim)}
+.cm .pr{position:absolute;left:0;right:0;bottom:0;height:3px;background:rgba(0,0,0,.5)}
+.cm .pr i{display:block;height:100%;background:linear-gradient(90deg,var(--red),var(--org))}
+.cm .t{font-size:10.5px;font-weight:500;margin-top:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.at{flex:0 0 218px;min-width:0;width:218px;display:flex;gap:11px;background:var(--glass2);backdrop-filter:blur(10px);
+  border:1px solid var(--line2);border-radius:13px;padding:10px;cursor:pointer;align-items:center}
+.at:hover{border-color:rgba(255,75,92,.45)}
+.at img{width:40px;height:56px;object-fit:cover;border-radius:8px}
+.at .tt{font-size:11.5px;font-weight:500;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.at .cd{font-size:10px;margin-top:4px;color:var(--dim)}
+.at .cd b{color:var(--grn)}.at .cd b.now{color:var(--org)}
+.at .cd .dub{color:var(--red);margin-left:6px;font-size:9px}
+
+.gridwrap{padding:6px 26px 26px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:15px 13px}
+.pc{position:relative;border-radius:13px;overflow:hidden;cursor:pointer;border:1px solid var(--line2);transition:.18s}
+.pc:hover{transform:translateY(-4px);box-shadow:0 0 0 1.5px var(--red),0 16px 40px -14px rgba(255,75,92,.4)}
+.pc img{width:100%;aspect-ratio:2/2.95;object-fit:cover;display:block}
+.pc .veil{position:absolute;inset:0;background:linear-gradient(0deg,rgba(12,13,20,.9) 0%,rgba(12,13,20,.25) 34%,transparent 55%)}
+.pc .t{position:absolute;left:11px;right:11px;bottom:24px;font-size:12px;font-weight:600;line-height:1.35;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.pc .m{position:absolute;left:11px;right:11px;bottom:9px;font-size:9.5px;color:var(--dim)}
+.pc .sc{position:absolute;top:8px;left:8px;font-size:9.5px;font-weight:600;background:rgba(12,13,20,.66);
+  backdrop-filter:blur(8px);padding:3px 8px;border-radius:7px;border:1px solid var(--line2)}
+.pc .bdg{position:absolute;top:8px;right:8px;display:flex;flex-direction:column;gap:4px;align-items:flex-end}
+.bdg i{font-style:normal;font-size:8px;font-weight:700;letter-spacing:.1em;padding:3px 6px;border-radius:5px;
+  background:rgba(12,13,20,.6);backdrop-filter:blur(6px)}
+.bdg .dub{color:var(--red);border:1px solid rgba(255,75,92,.5)}
+.bdg .loc{color:var(--grn);border:1px solid rgba(78,220,168,.5)}
+.bdg .fav{color:var(--org);border:1px solid rgba(255,184,107,.5)}
+.pc .pr{position:absolute;left:0;right:0;bottom:0;height:3px;background:rgba(0,0,0,.5)}
+.pc .pr i{display:block;height:100%;background:linear-gradient(90deg,var(--red),var(--org))}
+
+/* ═══════ DETAIL SCREEN ═══════ */
+.dhero{position:relative;height:340px;overflow:hidden;border-bottom:1px solid var(--line2)}
+.dhero>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 24%}
+.dhero .sh{position:absolute;inset:0;background:linear-gradient(0deg,var(--bg) 2%,rgba(12,13,20,.25) 48%,rgba(12,13,20,.4)),
+  linear-gradient(90deg,rgba(12,13,20,.86),transparent 58%)}
+.dback{position:absolute;top:14px;left:16px;z-index:3;display:inline-flex;align-items:center;gap:8px;
+  background:rgba(12,13,20,.6);backdrop-filter:blur(10px);border:1px solid var(--line2);border-radius:10px;
+  padding:8px 14px;font-size:11.5px;color:var(--dim);cursor:pointer}
+.dback:hover{color:var(--txt);border-color:rgba(255,75,92,.4)}
+.dhero .in{position:absolute;left:26px;right:26px;bottom:-52px;display:flex;gap:22px;align-items:flex-end}
+.dhero .poster{width:158px;border-radius:14px;border:1px solid rgba(255,255,255,.14);
+  box-shadow:0 22px 50px -16px rgba(0,0,0,.85)}
+.dhero .tx{min-width:0;flex:1;padding-bottom:62px}
+.dhero .kick{font-size:10px;letter-spacing:.32em;color:var(--red);font-weight:700;margin-bottom:9px}
+.dhero h2{font-size:40px;font-weight:800;letter-spacing:-.015em;line-height:1;text-shadow:0 2px 26px rgba(0,0,0,.65)}
+.dhero .jp{font-family:'Zen Old Mincho',serif;font-size:14px;color:var(--dim);letter-spacing:.4em;margin-top:8px}
+.dhero .acts{position:absolute;right:26px;bottom:64px;display:flex;gap:9px}
+.dbody{display:grid;grid-template-columns:minmax(0,1fr) 308px;gap:26px;padding:72px 26px 30px}
+.dmeta{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.dsyn{font-size:13px;line-height:1.75;color:var(--dim);max-width:760px}
+.dsec{margin-top:30px}
+.dsec .sh2{display:flex;align-items:baseline;gap:12px;margin-bottom:13px}
+.dsec .sh2 h3{font-size:12px;font-weight:700;letter-spacing:.2em}
+.dsec .sh2 h3 i{font-style:normal;color:var(--red);margin-right:8px}
+.dsec .sh2 .n{font-size:10px;color:var(--faint)}
+.spills{display:flex;gap:8px;margin-bottom:15px}
+.spill{padding:8px 16px;border-radius:999px;font-size:11.5px;font-weight:600;color:var(--dim);cursor:pointer;
+  background:rgba(255,255,255,.04);border:1px solid var(--line2)}
+.spill.on{color:#fff;background:rgba(255,75,92,.15);border-color:rgba(255,75,92,.55);box-shadow:0 0 14px rgba(255,75,92,.2)}
+.spill .d{font-size:9px;color:var(--faint);margin-left:7px}
+/* episode grid */
+.egrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(228px,1fr));gap:13px}
+.ep{border-radius:13px;overflow:hidden;border:1px solid var(--line2);background:var(--glass2);backdrop-filter:blur(8px);cursor:pointer;transition:.18s}
+.ep:hover{border-color:rgba(255,75,92,.5);transform:translateY(-2px)}
+.ep.next{border-color:rgba(255,184,107,.55);box-shadow:0 0 20px rgba(255,184,107,.15)}
+.ep .th{position:relative;height:104px;display:grid;place-items:center;
+  background:linear-gradient(140deg,rgba(255,75,92,.2),rgba(12,13,20,.7) 65%),linear-gradient(#181322,#181322)}
+.ep .th b{font-family:'JetBrains Mono';font-size:26px;color:rgba(255,255,255,.85)}
+.ep .th .pl{position:absolute;inset:0;display:grid;place-items:center;background:rgba(12,13,20,.4);opacity:0;transition:.15s;font-size:18px}
+.ep:hover .th .pl{opacity:1}
+.ep .th .seen{position:absolute;top:8px;right:8px;width:20px;height:20px;border-radius:50%;background:rgba(78,220,168,.16);
+  border:1px solid rgba(78,220,168,.5);color:var(--grn);font-size:10px;display:grid;place-items:center}
+.ep .th .tag{position:absolute;left:8px;top:8px;font-size:8px;font-weight:700;letter-spacing:.12em;padding:3px 7px;
+  border-radius:5px;background:rgba(12,13,20,.6);backdrop-filter:blur(6px)}
+.ep .th .tag.n{color:var(--org);border:1px solid rgba(255,184,107,.5)}
+.ep .th .tag.l{color:var(--grn);border:1px solid rgba(78,220,168,.5)}
+.ep .inf{padding:10px 12px 12px}
+.ep .et{font-size:11.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ep .em{display:flex;gap:8px;font-size:9.5px;color:var(--faint);margin-top:4px;align-items:center}
+.ep .em .dub{font-size:8px;font-weight:700;color:var(--red);border:1px solid rgba(255,75,92,.4);padding:2px 5px;border-radius:4px}
+.ep .em .sub{font-size:8px;font-weight:700;color:var(--faint);border:1px solid var(--line2);padding:2px 5px;border-radius:4px}
+/* right rail */
+.drail{display:flex;flex-direction:column;gap:14px}
+.rc{background:var(--glass2);backdrop-filter:blur(14px);border:1px solid var(--line2);border-radius:14px;padding:15px 16px}
+.rc .h{font-size:9px;letter-spacing:.26em;color:var(--faint);margin-bottom:11px;font-weight:600}
+.rc .big{font-family:'JetBrains Mono';font-size:19px;font-weight:600}
+.rc .big small{font-size:10px;color:var(--dim);margin-left:8px}
+.rc .sub2{font-size:10.5px;color:var(--dim);margin-top:5px}
+.rc .sub2 b{color:var(--org)}
+.dubline{display:flex;align-items:center;gap:10px;margin-top:12px;padding-top:12px;border-top:1px solid var(--line2)}
+.dubline .lbl{font-size:8.5px;letter-spacing:.2em;color:var(--red);font-weight:700;border:1px solid rgba(255,75,92,.4);
+  padding:3px 7px;border-radius:5px}
+.dubline .v{font-size:11px;font-weight:600}
+.dubline .cal{margin-left:auto;display:flex;gap:5px;align-items:center;font-size:9.5px;color:var(--faint)}
+.dubline .cal b{color:var(--txt)}
+.dubline .stp{width:18px;height:18px;border-radius:5px;background:rgba(255,255,255,.06);border:1px solid var(--line2);
+  display:grid;place-items:center;font-size:10px;cursor:pointer;color:var(--dim)}
+.kv{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line2);border-radius:10px;overflow:hidden;border:1px solid var(--line2)}
+.kv div{background:rgba(16,17,28,.7);padding:9px 12px}
+.kv .k{font-size:8px;letter-spacing:.2em;color:var(--faint);margin-bottom:4px}
+.kv .v{font-size:11.5px;font-weight:600}
+.kv .v.r{color:var(--red)}
+.langs{display:flex;gap:6px;flex-wrap:wrap}
+.lang{font-size:10px;font-weight:600;padding:5px 10px;border-radius:7px;background:rgba(255,255,255,.05);
+  border:1px solid var(--line2);color:var(--dim)}
+.lang.en{color:var(--red);border-color:rgba(255,75,92,.45);background:rgba(255,75,92,.08)}
+
+.qbar{position:relative;z-index:10;display:flex;align-items:center;gap:16px;background:rgba(9,10,16,.74);
+  backdrop-filter:blur(14px);border-top:1px solid var(--line2);padding:0 16px;font-size:11px;color:var(--dim)}
+.qbar .spin{width:12px;height:12px;border:2px solid rgba(255,75,92,.25);border-top-color:var(--red);border-radius:50%;animation:sp 1s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.qbar .qp{width:130px;height:4px;background:rgba(255,255,255,.08);border-radius:4px;overflow:hidden}
+.qbar .qp i{display:block;height:100%;width:42%;background:linear-gradient(90deg,var(--red),var(--org))}
+.qbar b{color:var(--txt);font-weight:500}
+.qbar .sep{width:1px;height:16px;background:var(--line2)}
+.qbar .right{margin-left:auto;display:flex;gap:14px}
+.qbar .ok{color:var(--grn)}
+</style>
+</head>
+<body>
+  <div class="amb"><img id="amb" alt=""></div>
+
+  <div class="tbar">
+    <svg class="mark" viewBox="0 0 24 24" fill="none" stroke="#FF4B5C" stroke-width="2"><path d="M3 7h18M5 7l1.2-3h11.6L19 7M7 7v13M17 7v13M4 20h16"/></svg>
+    <b>HIKARI</b><span class="ver mono">v2.0 — NOIR · KURENAI</span>
+    <div class="wbtns"><div class="wb">—</div><div class="wb">▢</div><div class="wb x">✕</div></div>
+  </div>
+
+  <div class="app">
+    <aside class="rail">
+      <div class="grp">LIBRARY</div>
+      <div class="ri on"><span class="ic">▦</span>All Shows<span class="n" id="nAll"></span></div>
+      <div class="ri"><span class="ic">◉</span>Airing<span class="n" id="nAir"></span></div>
+      <div class="ri"><span class="ic">♥</span>Favourites<span class="n">4</span></div>
+      <div class="ri"><span class="ic">◭</span>Dubbed<span class="n" id="nDub"></span></div>
+      <div class="ri"><span class="ic">◫</span>Unwatched</div>
+      <div class="grp">SOURCES</div>
+      <div class="ri"><span class="ic">⛁</span>Local files<span class="n">3</span></div>
+      <div class="ri"><span class="ic">◈</span>HIDIVE</div>
+      <div class="ri"><span class="ic">◈</span>Crunchyroll</div>
+      <div class="grp">MANAGE</div>
+      <div class="ri"><span class="ic">⇣</span>Import</div>
+      <div class="ri"><span class="ic">✎</span>Organize</div>
+      <div class="ri"><span class="ic">⚙</span>Settings</div>
+    </aside>
+
+    <div class="main">
+      <div class="topbar">
+        <div class="srch">⌕ Search library… <kbd>Ctrl K</kbd></div>
+        <div class="chips">
+          <div class="chip on">All</div><div class="chip">2026</div><div class="chip">Dubbed</div>
+          <div class="chip">Local</div><div class="chip">Comedy</div>
+        </div>
+        <div class="tb-r"><div class="sel">Sort: Airdate ↓</div></div>
+      </div>
+
+      <!-- HOME -->
+      <div class="scroll" id="home">
+        <div class="bill">
+          <img id="bImg" alt=""><div class="sh"></div>
+          <div class="kanji mincho" id="bKanji"></div>
+          <div class="in">
+            <div>
+              <div class="kick">CONTINUE WATCHING · SEASON 2</div>
+              <h2 id="bTitle"></h2>
+              <div class="sub" id="bSub"></div>
+            </div>
+            <div class="bact">
+              <button class="pb go" onclick="openDetail()">▶ Resume E6</button>
+              <button class="pb gh" onclick="openDetail()">Details</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="rh"><h3><i>◆</i>CONTINUE</h3><span class="n" id="cwN"></span><span class="all">See all →</span></div>
+          <div class="hs" id="cw"></div>
+        </div>
+
+        <div class="row">
+          <div class="rh"><h3><i>◆</i>ON AIR</h3><span class="n" id="airN"></span><span class="all">Calendar →</span></div>
+          <div class="hs" id="air"></div>
+        </div>
+
+        <div class="row"><div class="rh"><h3><i>◆</i>LIBRARY</h3><span class="n" id="libN"></span></div></div>
+        <div class="gridwrap"><div class="grid" id="grid"></div></div>
+      </div>
+
+      <!-- DETAIL -->
+      <div class="scroll" id="detail" hidden>
+        <div class="dhero">
+          <img id="dBan" alt=""><div class="sh"></div>
+          <div class="dback" onclick="closeDetail()">← Library</div>
+          <div class="in">
+            <img class="poster" id="dPoster" alt="">
+            <div class="tx">
+              <div class="kick">TV · FINISHED · S2 DUB ROLLING OUT</div>
+              <h2 id="dTitle"></h2>
+              <div class="jp" id="dJp"></div>
+            </div>
+          </div>
+          <div class="acts">
+            <button class="pb go">▶ Resume S2 E6 · on disk</button>
+            <button class="pb gh">♥</button><button class="pb gh">✓</button><button class="pb gh">⋯</button>
+          </div>
+        </div>
+        <div class="dbody">
+          <div>
+            <div class="dmeta" id="dMeta"></div>
+            <p class="dsyn" id="dSyn"></p>
+            <div class="dsec">
+              <div class="sh2"><h3><i>◆</i>EPISODES</h3><span class="n">SEASON 2 · 5 OF 23 WATCHED · TVDB + MAL</span></div>
+              <div class="spills">
+                <div class="spill">Season 1<span class="d">24</span></div>
+                <div class="spill on">Season 2<span class="d">23</span></div>
+                <div class="spill">JJK 0 · Movie</div>
+              </div>
+              <div class="egrid" id="eps"></div>
+            </div>
+            <div class="dsec">
+              <div class="sh2"><h3><i>◆</i>MORE LIKE THIS</h3><span class="n">FROM YOUR DISCOVER FEED</span></div>
+              <div class="hs" id="recs"></div>
+            </div>
+          </div>
+          <aside class="drail">
+            <div class="rc">
+              <div class="h">NEXT DUB EPISODE</div>
+              <div class="big">EP 21<small>SAT 26 JUL · 15:00</small></div>
+              <div class="sub2">Weekly · dub trails sub by <b>2 weeks</b> · AnimeSchedule</div>
+              <div class="dubline">
+                <span class="lbl">DUB</span><span class="v">AT EP 20</span>
+                <span class="cal"><span class="stp">−</span><b>calibrate</b><span class="stp">+</span></span>
+              </div>
+            </div>
+            <div class="rc">
+              <div class="h">DETAILS</div>
+              <div class="kv" id="dKv"></div>
+            </div>
+            <div class="rc">
+              <div class="h">AUDIO</div>
+              <div class="langs" id="dLangs"></div>
+            </div>
+            <div class="rc">
+              <div class="h">LOCAL FILES</div>
+              <div class="big" style="color:var(--grn)">12<small>episodes on disk · 8.1 GB</small></div>
+              <div class="sub2">D:\Anime\Jujutsu Kaisen\Season 2</div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="qbar">
+    <div class="spin"></div>
+    <span>Converting <b>Solo Leveling — E07</b></span>
+    <div class="qp"><i></i></div><span class="mono">42%</span>
+    <span>· 3 queued</span>
+    <div class="sep"></div>
+    <span>Cache <b>4.2 GB</b> / 10 GB</span>
+    <div class="right"><span class="ok">● AniList</span><span class="ok">● AnimeSchedule</span><span class="mono" id="clock"></span></div>
+  </div>
+
+<script src="data.js"></script>
+<script>
+const D=window.HIKARI_DATA,$=id=>document.getElementById(id);
+const days=['SUN','MON','TUE','WED','THU','FRI','SAT'];
+function cd(at){const s=at*1000-Date.now();if(s<=0)return'<b class="now">OUT NOW</b>';
+ const d=Math.floor(s/86400e3),h=Math.floor(s%86400e3/3600e3);const dt=new Date(at*1000);
+ return `<b>${days[dt.getDay()]} ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}</b> · ${d?d+'d ':''}${h}h`;}
+function openDetail(){$('home').hidden=true;$('detail').hidden=false;$('detail').scrollTop=0}
+function closeDetail(){$('detail').hidden=true;$('home').hidden=false}
+$('amb').src=D.hero.banner;
+$('nAll').textContent=D.stats.shows;$('nAir').textContent=D.airing.length;
+$('nDub').textContent=D.grid.filter(s=>s.dub).length+'+';
+$('bImg').src=D.hero.banner;$('bTitle').textContent=D.hero.title;$('bKanji').textContent=D.hero.native||'';
+$('bSub').innerHTML=`<span class="gchip r">★ ${D.hero.score}</span><span class="gchip">${D.hero.format} · ${D.hero.year}</span>
+ <span class="gchip">${D.hero.studio}</span><span class="gchip o">EN DUB</span>`;
+$('cwN').textContent=D.cw.length+' shows';
+$('cw').innerHTML=D.cw.map(s=>`<div class="cm" onclick="openDetail()"><div class="im">
+ <img src="${s.cover}"><div class="veil"></div>
+ <span class="eb">E${s.watched+1}</span><span class="lf">${s.episodes-s.watched} left</span>
+ <div class="pr"><i style="width:${Math.round(s.watched/s.episodes*100)}%"></i></div></div>
+ <div class="t">${s.title}</div></div>`).join('');
+$('airN').textContent=D.airing.length+' broadcasts';
+$('air').innerHTML=D.airing.map(a=>`<div class="at" onclick="openDetail()"><img src="${a.cover}"><div>
+ <div class="tt">${a.title}</div><div class="cd">EP ${a.ep} · ${cd(a.at)}${a.dub?'<span class="dub">DUB</span>':''}</div></div></div>`).join('');
+$('libN').textContent=D.stats.shows+' shows · sorted by airdate';
+$('grid').innerHTML=D.grid.map(s=>`<div class="pc" onclick="openDetail()">
+ <img loading="lazy" src="${s.cover}"><div class="veil"></div>
+ <span class="sc">★ ${s.score||'—'}</span>
+ <span class="bdg">${s.fav?'<i class="fav">♥</i>':''}${s.dub?'<i class="dub">DUB</i>':''}${s.local?`<i class="loc">LOCAL ${s.local}</i>`:''}</span>
+ <div class="t">${s.title}</div><div class="m">${s.year} · ${s.format}</div>
+ ${s.watched?`<div class="pr"><i style="width:${Math.min(100,Math.round(s.watched/(s.episodes||12)*100))}%"></i></div>`:''}
+</div>`).join('');
+/* detail */
+$('dBan').src=D.hero.banner;$('dPoster').src=D.hero.cover;
+$('dTitle').textContent=D.hero.title;$('dJp').textContent=D.hero.native;
+$('dMeta').innerHTML=`<span class="gchip r">★ ${D.hero.score}</span><span class="gchip">${D.hero.format} · ${D.hero.year}</span>
+ <span class="gchip">${D.hero.studio}</span>`+D.hero.genres.map(g=>`<span class="gchip">${g}</span>`).join('')+`<span class="gchip o">EN DUB</span>`;
+$('dSyn').textContent=D.hero.desc+'…';
+const EPS=[[1,'Ryomen Sukuna',1],[2,'For Myself',1],[3,'Girl of Steel',1],[4,'Curse Womb Must Die',1],
+ [5,'Curse Womb Must Die -II-',1],[6,'After Rain',2],[7,'Assault',3],[8,'Boredom',0]];
+$('eps').innerHTML=EPS.map(([n,t,st])=>`<div class="ep ${st===2?'next':''}">
+ <div class="th"><b>${String(n).padStart(2,'0')}</b><span class="pl">▶</span>
+ ${st===1?'<span class="seen">✓</span>':''}
+ ${st===2?'<span class="tag n">▶ NEXT · LOCAL</span>':st===3?'<span class="tag l">LOCAL</span>':''}</div>
+ <div class="inf"><div class="et">${t}</div>
+ <div class="em"><span>24 min</span><span>${n<8?'<span class="dub">DUB</span>':'<span class="sub">SUB ONLY</span>'}</span></div></div></div>`).join('');
+$('dKv').innerHTML=[['FORMAT','TV · 24m'],['YEAR','2020'],['STATUS','<span class="r">FINISHED</span>'],['STUDIO',D.hero.studio],
+ ['EPISODES','24 + 23'],['SOURCE','CRUNCHYROLL']].map(([k,v])=>`<div><div class="k">${k}</div><div class="v">${v}</div></div>`).join('');
+$('dLangs').innerHTML=['Japanese','English','Spanish','French','German'].map(l=>`<span class="lang ${l==='English'?'en':''}">${l}</span>`).join('');
+$('recs').innerHTML=D.grid.filter(s=>s.genres.includes('Action')).slice(0,8).map(s=>`<div class="cm"><div class="im">
+ <img src="${s.cover}"><div class="veil"></div></div><div class="t">${s.title}</div></div>`).join('');
+const tick=()=>{$('clock').textContent=new Date().toTimeString().slice(0,5)};tick();setInterval(tick,30e3);
+</script>
+</body>
+</html>

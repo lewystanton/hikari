@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>HIKARI — Index</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{ --bg:#FAFAF5; --ink:#0B0B0B; --dim:#6E6E64; --line:#0B0B0B; --thin:rgba(11,11,11,.16); --org:#FF4400; }
+*{margin:0;padding:0;box-sizing:border-box}
+html{background:var(--bg)}
+body{font-family:'IBM Plex Mono',monospace;color:var(--ink);background:var(--bg)}
+.anton{font-family:'Anton',sans-serif;font-weight:400}
+a{color:inherit;text-decoration:none}
+.wrap{max-width:1440px;margin:0 auto;padding:0 40px}
+
+/* ————— masthead ————— */
+.mast{border-bottom:4px solid var(--line)}
+.mast .wrap{display:flex;align-items:flex-end;gap:40px;padding-top:26px}
+.mast h1{font-size:clamp(90px,10vw,150px);line-height:.84;letter-spacing:-.01em;text-transform:uppercase}
+.mast h1 span{color:var(--org)}
+.mast .meta{margin-left:auto;text-align:right;padding-bottom:14px;font-size:11px;line-height:1.9;letter-spacing:.06em}
+.mast .meta b{color:var(--org);font-weight:600}
+.mast .meta .lbl{color:var(--dim)}
+
+/* ————— nav tabs ————— */
+.tabs{display:flex;border-bottom:4px solid var(--line)}
+.tabs .wrap{display:flex;width:100%;padding:0}
+.tab{flex:1;padding:13px 18px;font-size:11px;letter-spacing:.22em;border-right:1px solid var(--thin);cursor:pointer;display:flex;gap:12px}
+.tab:first-child{border-left:1px solid var(--thin)}
+.tab i{font-style:normal;color:var(--dim)}
+.tab.on{background:var(--org);color:#fff}
+.tab.on i{color:rgba(255,255,255,.7)}
+.tab:hover:not(.on){background:rgba(11,11,11,.05)}
+
+/* ————— featured ————— */
+.feat{border-bottom:4px solid var(--line)}
+.feat .wrap{display:grid;grid-template-columns:1fr 320px;gap:0}
+.fl{padding:44px 44px 44px 0;border-right:1px solid var(--thin)}
+.eyebrow{font-size:10px;letter-spacing:.34em;color:var(--org);font-weight:600;margin-bottom:18px}
+.fl h2{font-size:clamp(48px,5.4vw,84px);line-height:.92;text-transform:uppercase;margin-bottom:8px}
+.fl .jp{font-size:13px;letter-spacing:.5em;color:var(--dim);margin-bottom:30px}
+.spec{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid var(--line)}
+.spec div{padding:12px 14px;border-right:1px solid var(--thin);border-top:1px solid var(--thin)}
+.spec div:nth-child(-n+4){border-top:none}
+.spec div:nth-child(4n){border-right:none}
+.spec .k{font-size:8.5px;letter-spacing:.28em;color:var(--dim);margin-bottom:5px}
+.spec .v{font-size:14px;font-weight:600}
+.spec .v.o{color:var(--org)}
+.fl .desc{font-size:11.5px;line-height:1.85;color:var(--dim);margin-top:26px;max-width:640px}
+.fbtns{display:flex;gap:0;margin-top:30px}
+.bbtn{padding:16px 30px;font-size:11px;letter-spacing:.26em;font-family:'IBM Plex Mono';font-weight:600;
+  border:1px solid var(--line);background:var(--ink);color:#fff;cursor:pointer}
+.bbtn:hover{background:var(--org);border-color:var(--org)}
+.bbtn.alt{background:transparent;color:var(--ink);border-left:none}
+.bbtn.alt:hover{background:rgba(11,11,11,.06);color:var(--ink)}
+.fr{padding:44px 0 44px 44px;display:flex;flex-direction:column;gap:16px}
+.fr img{width:100%;border:3px solid var(--line);box-shadow:10px 10px 0 var(--org);display:block}
+.fr .cap{font-size:9px;letter-spacing:.24em;color:var(--dim);line-height:1.8}
+
+/* ————— section bar ————— */
+.sbar{display:flex;align-items:center;border-bottom:1px solid var(--line);margin-top:56px}
+.sbar h3{font-size:30px;text-transform:uppercase;letter-spacing:.02em;padding:10px 0}
+.sbar .no{color:var(--org);margin-right:16px}
+.sbar .cnt{margin-left:auto;font-size:10px;letter-spacing:.22em;color:var(--dim)}
+
+/* ————— airing table ————— */
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{font-size:9px;letter-spacing:.3em;color:var(--dim);text-align:left;padding:12px 16px;border-bottom:1px solid var(--line);font-weight:500}
+td{padding:15px 16px;border-bottom:1px solid var(--thin);vertical-align:middle}
+tr.today td{border-left:none;position:relative}
+tr.today td:first-child::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--org)}
+tr:hover td{color:var(--org);cursor:pointer}
+td.ep{font-weight:600;font-size:15px}
+td.ttl{font-weight:500;max-width:480px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+td .njp{color:var(--dim);font-size:10px;margin-left:14px;letter-spacing:.1em}
+td.in{font-variant-numeric:tabular-nums;font-weight:600}
+td.in.now{color:var(--org)}
+.mtag{font-size:9px;letter-spacing:.2em;border:1px solid var(--line);padding:3px 8px;font-weight:600}
+.mtag.o{border-color:var(--org);color:var(--org)}
+
+/* ————— grid ————— */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));border-left:1px solid var(--thin);border-top:1px solid var(--thin);margin-top:0}
+.card{border-right:1px solid var(--thin);border-bottom:1px solid var(--thin);cursor:pointer;position:relative;background:var(--bg);transition:background .15s}
+.card img{width:100%;aspect-ratio:2/2.7;object-fit:cover;display:block;border-bottom:1px solid var(--thin)}
+.card .inf{padding:12px 14px 14px}
+.card h4{font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;line-height:1.55;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:34px}
+.card .m{display:flex;gap:10px;font-size:9.5px;color:var(--dim);margin-top:7px;letter-spacing:.08em;flex-wrap:wrap}
+.card .m b{color:var(--org);font-weight:600}
+.card .frac{position:absolute;top:10px;left:10px;background:var(--ink);color:#fff;font-size:9.5px;
+  padding:4px 8px;letter-spacing:.12em;font-weight:600}
+.card .fv{position:absolute;top:10px;right:10px;background:var(--org);color:#fff;width:24px;height:24px;
+  display:grid;place-items:center;font-size:12px}
+.card .pb{height:3px;background:rgba(11,11,11,.1)}
+.card .pb i{display:block;height:100%;background:var(--org)}
+.card:hover{background:var(--ink);color:#fff}
+.card:hover .m{color:rgba(255,255,255,.65)}
+.card:hover img{filter:grayscale(.25) contrast(1.05)}
+
+/* ————— ticker ————— */
+.tick{border-top:4px solid var(--line);margin-top:70px;padding:18px 0 60px;font-size:10px;letter-spacing:.3em;color:var(--dim);overflow:hidden;white-space:nowrap}
+.tick b{color:var(--org);font-weight:600}
+</style>
+</head>
+<body>
+<div class="mast"><div class="wrap">
+  <h1 class="anton">HIKA<span>RI</span></h1>
+  <div class="meta" id="mastMeta"></div>
+</div></div>
+
+<div class="tabs"><div class="wrap">
+  <div class="tab on"><i>01</i>LIBRARY</div>
+  <div class="tab"><i>02</i>DISCOVER</div>
+  <div class="tab"><i>03</i>AIRING</div>
+  <div class="tab"><i>04</i>FAVOURITES</div>
+  <div class="tab"><i>05</i>LOCAL</div>
+  <div class="tab"><i>⌕</i>SEARCH</div>
+</div></div>
+
+<div class="feat"><div class="wrap">
+  <div class="fl">
+    <div class="eyebrow">FEATURED RECORD — №113415</div>
+    <h2 class="anton" id="fTitle"></h2>
+    <div class="jp" id="fJp"></div>
+    <div class="spec" id="fSpec"></div>
+    <p class="desc" id="fDesc"></p>
+    <div class="fbtns">
+      <button class="bbtn">▶ CONTINUE — EP 06</button>
+      <button class="bbtn alt">FULL RECORD →</button>
+    </div>
+  </div>
+  <div class="fr">
+    <img id="fPoster" alt="">
+    <div class="cap" id="fCap"></div>
+  </div>
+</div></div>
+
+<div class="wrap">
+  <div class="sbar"><h3 class="anton"><span class="no">A/</span>ON AIR</h3><span class="cnt" id="airCnt"></span></div>
+  <table id="airTbl"></table>
+
+  <div class="sbar"><h3 class="anton"><span class="no">B/</span>THE ARCHIVE</h3><span class="cnt" id="libCnt"></span></div>
+  <div class="grid" id="grid"></div>
+</div>
+
+<div class="tick"><div class="wrap" id="tick"></div></div>
+
+<script src="data.js"></script>
+<script>
+const D=window.HIKARI_DATA,$=id=>document.getElementById(id);
+const days=['SUN','MON','TUE','WED','THU','FRI','SAT'];
+const pct=Math.round(D.stats.watched/D.stats.eps*100);
+function inStr(at){const s=at*1000-Date.now();if(s<=0)return'OUT NOW';const d=Math.floor(s/86400e3),h=Math.floor(s%86400e3/3600e3),m=Math.floor(s%3600e3/60e3);return d?`T−${d}D ${String(h).padStart(2,'0')}H`:`T−${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;}
+$('mastMeta').innerHTML=`<span class="lbl">PERSONAL ANIME INDEX — EST. 2026</span><br>
+  <b>${D.stats.shows}</b> SHOWS &nbsp;/&nbsp; <b>${D.stats.eps.toLocaleString()}</b> EPISODES TRACKED<br>
+  <b>${D.stats.watched}</b> WATCHED &nbsp;/&nbsp; <b>${D.stats.genres}</b> GENRES &nbsp;/&nbsp; <b>${D.airing.length}</b> ON AIR`;
+$('fTitle').textContent=D.hero.title;
+$('fJp').textContent=D.hero.native||'';
+$('fPoster').src=D.hero.cover;
+$('fCap').textContent=`FIG. 01 — KEY VISUAL / ${(D.hero.studio||'').toUpperCase()} ${D.hero.year}`;
+$('fSpec').innerHTML=[
+  ['SCORE',`<span class="o">${D.hero.score} / 100</span>`],['FORMAT',D.hero.format],['YEAR',D.hero.year],['STATUS',D.hero.status],
+  ['STUDIO',D.hero.studio||'—'],['EPISODES',D.hero.episodes||'—'],['AUDIO',D.hero.dub?'<span class="o">EN DUB</span>':'SUB'],['GENRE',D.hero.genres.join(' / ').toUpperCase()]
+].map(([k,v])=>`<div><div class="k">${k}</div><div class="v${/class="o"/.test(v)?'':''}">${v}</div></div>`).join('');
+$('fDesc').textContent=D.hero.desc+' …';
+$('airCnt').textContent='SORTED BY NEXT BROADCAST';
+$('airTbl').innerHTML='<tr><th style="width:70px">EP</th><th>TITLE</th><th style="width:130px">DAY</th><th style="width:150px">COUNTDOWN</th><th style="width:80px">AUDIO</th></tr>'+
+ D.airing.map(a=>{const dt=new Date(a.at*1000);const today=new Date().toDateString()===dt.toDateString();
+  return `<tr class="${today?'today':''}"><td class="ep">${String(a.ep).padStart(2,'0')}</td>
+  <td class="ttl">${a.title.toUpperCase()}<span class="njp">${a.native||''}</span></td>
+  <td>${days[dt.getDay()]} ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}</td>
+  <td class="in ${a.at*1000<Date.now()?'now':''}">${inStr(a.at)}</td>
+  <td>${a.dub?'<span class="mtag o">DUB</span>':'<span class="mtag">SUB</span>'}</td></tr>`}).join('');
+$('libCnt').textContent=`${D.grid.length} OF ${D.stats.shows} RECORDS — SORT: AIRDATE ↓`;
+$('grid').innerHTML=D.grid.map((s,i)=>`<div class="card">
+  ${s.watched?`<span class="frac">${s.watched}/${s.episodes||'?'}</span>`:''}
+  ${s.fav?'<span class="fv">★</span>':''}
+  <img loading="lazy" src="${s.cover}">
+  ${s.watched?`<div class="pb"><i style="width:${Math.min(100,Math.round(s.watched/(s.episodes||12)*100))}%"></i></div>`:''}
+  <div class="inf"><h4>${s.title}</h4>
+  <div class="m"><span><b>${s.score||'—'}</b></span><span>${s.year}</span><span>${s.format}</span>${s.dub?'<span>[DUB]</span>':''}${s.local?`<span>[LOCAL·${s.local}]</span>`:''}</div>
+  </div></div>`).join('');
+$('tick').innerHTML=Array(2).fill(D.grid.flatMap(s=>s.genres).filter((g,i,a)=>a.indexOf(g)===i).map(g=>g.toUpperCase()).join(' &nbsp;<b>/</b>&nbsp; ')).join(' &nbsp;<b>//</b>&nbsp; ');
+</script>
+</body>
+</html>

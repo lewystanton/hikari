@@ -1,0 +1,95 @@
+{
+  "name": "hikari",
+  "productName": "Hikari",
+  "version": "2.25.1",
+  "description": "A beautiful personal anime library",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder",
+    "predist": "node scripts/clean-dist.mjs",
+    "clean:dist": "node scripts/clean-dist.mjs --all",
+    "dist:win": "electron-builder --win nsis",
+    "dist:mac": "electron-builder --mac dmg"
+  },
+  "devDependencies": {
+    "@phosphor-icons/core": "^2.1.1",
+    "@supabase/supabase-js": "^2.110.8",
+    "electron": "^33.2.0",
+    "electron-builder": "^26.15.3",
+    "playwright-core": "^1.61.1",
+    "png-to-ico": "^3.0.2",
+    "sharp": "^0.35.3"
+  },
+  "author": "Lewis",
+  "build": {
+    "appId": "dev.lewis.hikari",
+    "productName": "Hikari",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "media.js",
+      "remote.js",
+      "src/**/*",
+      "build/icon.png",
+      "package.json"
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "artifactName": "Hikari-Setup-${version}.${ext}"
+    },
+    "asarUnpack": [
+      "node_modules/ffmpeg-static/**",
+      "node_modules/ffprobe-static/**"
+    ],
+    "mac": {
+      "icon": "build/icon.png",
+      "category": "public.app-category.entertainment",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "Hikari-${version}-${arch}.${ext}"
+    },
+    "linux": {
+      "icon": "build/icon.png",
+      "category": "AudioVideo",
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "Hikari-${version}.${ext}"
+    }
+  },
+  "dependencies": {
+    "ffmpeg-static": "^5.3.0",
+    "ffprobe-static": "^3.1.0",
+    "hls.js": "^1.6.16"
+  }
+}

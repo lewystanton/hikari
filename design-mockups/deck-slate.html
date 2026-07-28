@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>HIKARI — Deck · Slate</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0D1116; --pane:#131A22; --pane2:#182129; --line:rgba(160,190,230,.08);
+  --txt:#E4EAF2; --dim:#8898AC; --faint:#59677A; --blu:#6CA8FF; --grn:#5BD6A2; --amb:#F0B45F;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--txt);font-size:12.5px;
+  display:grid;grid-template-rows:34px 1fr 24px}
+.mono{font-family:'JetBrains Mono',monospace}
+
+.tbar{display:flex;align-items:center;background:#090C10;border-bottom:1px solid var(--line);
+  padding-left:12px;-webkit-app-region:drag;user-select:none}
+.tbar b{font-size:10.5px;letter-spacing:.28em;font-weight:600}
+.tbar .bc{font-size:10px;color:var(--faint);margin-left:12px}
+.tbar .bc b{color:var(--dim);font-weight:500;letter-spacing:0}
+.wbtns{margin-left:auto;display:flex;height:100%}
+.wb{width:44px;display:grid;place-items:center;color:var(--dim);font-size:11px}
+.wb:hover{background:rgba(255,255,255,.06)}
+.wb.x:hover{background:#D24B4B;color:#fff}
+
+.app{display:grid;grid-template-columns:46px 1fr 302px;min-height:0}
+
+/* icon rail */
+.irail{background:#090C10;border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;padding:10px 0;gap:4px}
+.ii{width:34px;height:34px;display:grid;place-items:center;border-radius:9px;color:var(--faint);font-size:14px;cursor:pointer;position:relative}
+.ii:hover{color:var(--txt);background:rgba(255,255,255,.05)}
+.ii.on{color:var(--blu);background:rgba(108,168,255,.12)}
+.ii.on::before{content:"";position:absolute;left:-6px;top:9px;bottom:9px;width:3px;border-radius:3px;background:var(--blu)}
+.ii .b{position:absolute;top:2px;right:2px;min-width:13px;height:13px;border-radius:7px;background:var(--blu);
+  color:#08101C;font-size:8px;font-weight:700;display:grid;place-items:center;padding:0 3px}
+.irail .gap{flex:1}
+
+/* center column */
+.center{display:flex;flex-direction:column;min-width:0;min-height:0;border-right:1px solid var(--line)}
+.cmd{display:flex;align-items:center;gap:10px;padding:9px 16px;border-bottom:1px solid var(--line)}
+.srch{display:flex;align-items:center;gap:8px;background:var(--pane);border:1px solid var(--line);
+  border-radius:7px;padding:6px 11px;color:var(--faint);width:300px;font-size:11.5px}
+.srch kbd{margin-left:auto;font-size:9px;background:rgba(255,255,255,.06);padding:2px 5px;border-radius:3px}
+.fsel{display:flex;align-items:center;gap:6px;background:var(--pane);border:1px solid var(--line);border-radius:7px;
+  padding:6px 10px;font-size:11px;color:var(--dim);cursor:pointer}
+.fsel b{color:var(--txt);font-weight:500}
+.cmd .r{margin-left:auto;display:flex;gap:6px}
+.vt{display:flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+.vt i{font-style:normal;padding:5px 9px;cursor:pointer;color:var(--faint)}
+.vt i.on{background:rgba(108,168,255,.14);color:var(--blu)}
+
+/* resume ribbon */
+.ribbon{display:flex;align-items:center;gap:16px;margin:14px 16px 0;background:linear-gradient(90deg,var(--pane2),var(--pane));
+  border:1px solid var(--line);border-radius:12px;padding:10px 14px;position:relative;overflow:hidden}
+.ribbon .thumb{position:relative;width:132px;height:74px;border-radius:8px;overflow:hidden;flex:none}
+.ribbon .thumb img{width:100%;height:100%;object-fit:cover}
+.ribbon .thumb i{position:absolute;inset:0;display:grid;place-items:center;background:rgba(9,12,16,.35);
+  font-style:normal;font-size:16px}
+.ribbon .tx{min-width:0;flex:1}
+.ribbon .k{font-size:9px;letter-spacing:.26em;color:var(--blu);font-weight:700}
+.ribbon h2{font-size:16.5px;font-weight:700;margin:4px 0 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ribbon .m{font-size:11px;color:var(--dim)}
+.ribbon .m b{color:var(--txt);font-weight:600}
+.ribbon .pr{height:4px;border-radius:4px;background:rgba(255,255,255,.08);margin-top:8px;max-width:420px;overflow:hidden}
+.ribbon .pr i{display:block;height:100%;width:76%;background:var(--blu)}
+.rbtn{flex:none;display:inline-flex;align-items:center;gap:8px;background:var(--blu);color:#08101C;
+  font-weight:700;font-size:12px;border:none;border-radius:9px;padding:10px 18px;cursor:pointer}
+.rbtn:hover{filter:brightness(1.1)}
+.ribbon .stats{flex:none;display:flex;gap:18px;padding:0 6px 0 16px;border-left:1px solid var(--line)}
+.ribbon .st .v{font-family:'JetBrains Mono';font-size:15px;font-weight:600;color:var(--txt)}
+.ribbon .st .v.b{color:var(--blu)}
+.ribbon .st .k2{font-size:8.5px;letter-spacing:.2em;color:var(--faint);margin-top:2px}
+
+/* grid */
+.gscroll{overflow-y:auto;min-height:0;flex:1;padding:14px 16px 22px}
+.gscroll::-webkit-scrollbar{width:9px}
+.gscroll::-webkit-scrollbar-thumb{background:#232D3A;border-radius:8px;border:2px solid var(--bg)}
+.gh{display:flex;align-items:baseline;gap:10px;margin:6px 0 12px}
+.gh h3{font-size:11px;font-weight:600;letter-spacing:.2em;color:var(--dim)}
+.gh .n{font-size:10px;color:var(--faint)}
+.gh .r{margin-left:auto;font-size:10.5px;color:var(--faint)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:14px 11px}
+.pc{cursor:pointer}
+.pc .im{position:relative;border-radius:8px;overflow:hidden;border:1px solid var(--line)}
+.pc:hover .im{box-shadow:0 0 0 1.5px var(--blu)}
+.pc img{width:100%;aspect-ratio:2/2.9;object-fit:cover;display:block}
+.pc .sc{position:absolute;top:6px;left:6px;font-size:8.5px;font-weight:600;background:rgba(9,12,16,.78);
+  padding:2px 5px;border-radius:4px;color:var(--amb)}
+.pc .dub{position:absolute;top:6px;right:6px;font-size:7.5px;font-weight:700;letter-spacing:.1em;
+  background:rgba(240,180,95,.15);color:var(--amb);border:1px solid rgba(240,180,95,.4);padding:2px 4px;border-radius:3px}
+.pc .loc{position:absolute;bottom:8px;left:6px;font-size:7.5px;font-weight:700;letter-spacing:.1em;
+  background:rgba(91,214,162,.14);color:var(--grn);border:1px solid rgba(91,214,162,.4);padding:2px 4px;border-radius:3px}
+.pc .fav{position:absolute;bottom:8px;right:6px;color:#F286B0;font-size:10px;text-shadow:0 1px 4px rgba(0,0,0,.8)}
+.pc .pr{position:absolute;left:0;right:0;bottom:0;height:2.5px;background:rgba(0,0,0,.5)}
+.pc .pr i{display:block;height:100%;background:var(--grn)}
+.pc .t{font-size:10.5px;font-weight:500;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pc .m{font-size:9px;color:var(--faint);margin-top:1px}
+
+/* right widgets */
+.widgets{background:#0B0F14;overflow-y:auto;padding:14px 14px 20px;display:flex;flex-direction:column;gap:14px}
+.widgets::-webkit-scrollbar{width:8px}
+.widgets::-webkit-scrollbar-thumb{background:#232D3A;border-radius:8px}
+.wg{background:var(--pane);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.wg .h{display:flex;align-items:center;gap:8px;padding:11px 13px;border-bottom:1px solid var(--line);
+  font-size:10px;letter-spacing:.2em;color:var(--dim);font-weight:600}
+.wg .h .dot{width:6px;height:6px;border-radius:50%;background:var(--grn)}
+.wg .h .r{margin-left:auto;font-size:9px;color:var(--faint);letter-spacing:0}
+/* on-air list */
+.ar{display:flex;align-items:center;gap:10px;padding:8px 13px;border-bottom:1px solid rgba(255,255,255,.03);cursor:pointer}
+.ar:hover{background:rgba(255,255,255,.025)}
+.ar:last-child{border-bottom:none}
+.ar img{width:28px;height:38px;object-fit:cover;border-radius:4px}
+.ar .t{flex:1;min-width:0;font-size:11px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ar .t small{display:block;font-size:9px;color:var(--faint);margin-top:2px;font-weight:400}
+.ar .cd{font-family:'JetBrains Mono';font-size:10px;color:var(--grn);text-align:right;flex:none}
+.ar .cd.now{color:var(--amb)}
+.ar .cd small{display:block;font-size:8px;color:var(--faint)}
+/* up next list */
+.ur{display:flex;align-items:center;gap:10px;padding:8px 13px;border-bottom:1px solid rgba(255,255,255,.03);cursor:pointer}
+.ur:hover{background:rgba(255,255,255,.025)}
+.ur:last-child{border-bottom:none}
+.ur img{width:28px;height:38px;object-fit:cover;border-radius:4px}
+.ur .t{flex:1;min-width:0;font-size:11px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ur .ep{font-family:'JetBrains Mono';font-size:10px;color:var(--blu);flex:none}
+.ur .pr{width:44px;height:3px;border-radius:3px;background:rgba(255,255,255,.08);flex:none;overflow:hidden}
+.ur .pr i{display:block;height:100%;background:var(--blu)}
+/* activity */
+.qrow{padding:9px 13px;border-bottom:1px solid rgba(255,255,255,.03)}
+.qrow:last-child{border-bottom:none}
+.qrow .l{display:flex;justify-content:space-between;font-size:10.5px;margin-bottom:6px}
+.qrow .l b{font-weight:600}
+.qrow .l span{font-family:'JetBrains Mono';font-size:9.5px;color:var(--faint)}
+.qrow .pb{height:3px;border-radius:3px;background:rgba(255,255,255,.07);overflow:hidden}
+.qrow .pb i{display:block;height:100%;background:var(--amb)}
+.qrow.wait .pb i{background:rgba(255,255,255,.14)}
+.qrow .l .st{color:var(--amb)}
+.qrow.wait .l .st{color:var(--faint)}
+
+/* status strip */
+.sbar{display:flex;align-items:center;gap:14px;background:#090C10;border-top:1px solid var(--line);
+  padding:0 12px;font-size:9.5px;color:var(--faint)}
+.sbar b{color:var(--dim);font-weight:500}
+.sbar .g{color:var(--grn)}.sbar .a{color:var(--amb)}
+.sbar .r{margin-left:auto;display:flex;gap:12px}
+</style>
+</head>
+<body>
+  <div class="tbar"><b>HIKARI</b><span class="bc mono">deck · slate — <b>library / all</b></span>
+    <div class="wbtns"><div class="wb">—</div><div class="wb">▢</div><div class="wb x">✕</div></div></div>
+
+  <div class="app">
+    <aside class="irail">
+      <div class="ii on" title="Library">▦</div>
+      <div class="ii" title="Airing">◉<span class="b" id="bAir"></span></div>
+      <div class="ii" title="Favourites">♥</div>
+      <div class="ii" title="Dubbed">◭</div>
+      <div class="ii" title="Local">⛁</div>
+      <div class="ii" title="Import">⇣</div>
+      <div class="gap"></div>
+      <div class="ii" title="Settings">⚙</div>
+    </aside>
+
+    <div class="center">
+      <div class="cmd">
+        <div class="srch">⌕ Filter 167 shows… <kbd>CTRL K</kbd></div>
+        <div class="fsel">Status: <b>Any</b> ▾</div>
+        <div class="fsel">Genre: <b>All</b> ▾</div>
+        <div class="fsel">Source: <b>Any</b> ▾</div>
+        <div class="fsel">Sort: <b>Airdate ↓</b></div>
+        <div class="r"><div class="vt"><i class="on">▦</i><i>☰</i><i>▤</i></div></div>
+      </div>
+
+      <div class="ribbon">
+        <div class="thumb"><img id="rThumb" alt=""><i>▶</i></div>
+        <div class="tx">
+          <div class="k">CONTINUE · S2 E6 — AFTER RAIN</div>
+          <h2 id="rTitle"></h2>
+          <div class="m"><b>18m left</b> in E5 · then E6 ready on disk · next dub <b style="color:var(--amb)">SAT 15:00</b></div>
+          <div class="pr"><i></i></div>
+        </div>
+        <button class="rbtn">▶ Resume</button>
+        <div class="stats">
+          <div class="st"><div class="v" id="stShows"></div><div class="k2">SHOWS</div></div>
+          <div class="st"><div class="v b" id="stAir"></div><div class="k2">ON AIR</div></div>
+          <div class="st"><div class="v" style="color:var(--amb)">42%</div><div class="k2">CONVERT</div></div>
+        </div>
+      </div>
+
+      <div class="gscroll">
+        <div class="gh"><h3>LIBRARY</h3><span class="n" id="libN"></span><span class="r">density: compact · 118px</span></div>
+        <div class="grid" id="grid"></div>
+      </div>
+    </div>
+
+    <aside class="widgets">
+      <div class="wg">
+        <div class="h"><span class="dot"></span>ON AIR NEXT<span class="r" id="wAirN"></span></div>
+        <div id="wAir"></div>
+      </div>
+      <div class="wg">
+        <div class="h" style="color:var(--dim)"><span class="dot" style="background:var(--blu)"></span>UP NEXT<span class="r" id="wUpN"></span></div>
+        <div id="wUp"></div>
+      </div>
+      <div class="wg">
+        <div class="h"><span class="dot" style="background:var(--amb)"></span>ACTIVITY<span class="r">2 jobs</span></div>
+        <div id="wAct"></div>
+      </div>
+    </aside>
+  </div>
+
+  <div class="sbar">
+    <span><b id="sbShows"></b> shows</span><span><b>2,869</b> eps</span>
+    <span class="g">● scan idle</span><span class="a">⣷ converting E07 · 42%</span>
+    <div class="r"><span class="g">AniList</span><span class="g">AnimeSchedule</span><span class="mono" id="clk"></span></div>
+  </div>
+
+<script src="data.js"></script>
+<script>
+const D=window.HIKARI_DATA,$=id=>document.getElementById(id);
+const days=['SUN','MON','TUE','WED','THU','FRI','SAT'];
+$('bAir').textContent=D.airing.length;
+$('rThumb').src=D.hero.banner;$('rTitle').textContent=D.hero.title;
+$('stShows').textContent=D.stats.shows;$('stAir').textContent=D.airing.length;
+$('sbShows').textContent=D.stats.shows;
+$('libN').textContent=D.stats.shows+' shows · airdate ↓';
+$('grid').innerHTML=[...D.cw.map(s=>({...s})),...D.grid.filter(g=>!D.cw.find(c=>c.id===g.id))].map(s=>`<div class="pc"><div class="im">
+ <img loading="lazy" src="${s.cover}">
+ <span class="sc">${s.score||'—'}</span>
+ ${s.dub?'<span class="dub">DUB</span>':''}${s.local?`<span class="loc">HDD ${s.local}</span>`:''}${s.fav?'<span class="fav">♥</span>':''}
+ ${s.watched?`<div class="pr"><i style="width:${Math.min(100,Math.round(s.watched/(s.episodes||12)*100))}%"></i></div>`:''}
+ </div><div class="t">${s.title}</div><div class="m">${s.year} · ${s.format}${s.watched?` · ${s.watched}/${s.episodes}`:''}</div></div>`).join('');
+function cdd(a){const dt=new Date(a.at*1000);const s=a.at*1000-Date.now();
+ if(s<=0)return'<span class="cd now">OUT NOW<small>tap to open</small></span>';
+ const d=Math.floor(s/86400e3),h=Math.floor(s%86400e3/3600e3);
+ return `<span class="cd">${d?d+'d ':''}${h}h<small>${days[dt.getDay()]} ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}</small></span>`;}
+$('wAirN').textContent=D.airing.length+' this week';
+$('wAir').innerHTML=D.airing.map(a=>`<div class="ar"><img src="${a.cover}">
+ <div class="t">${a.title}<small>EP ${a.ep}${a.dub?' · DUB track':''}</small></div>${cdd(a)}</div>`).join('');
+$('wUpN').textContent=D.cw.length+' in progress';
+$('wUp').innerHTML=D.cw.map(s=>`<div class="ur"><img src="${s.cover}">
+ <div class="t">${s.title}</div><span class="ep">E${s.watched+1}</span>
+ <div class="pr"><i style="width:${Math.round(s.watched/s.episodes*100)}%"></i></div></div>`).join('');
+$('wAct').innerHTML=`
+ <div class="qrow"><div class="l"><b>Solo Leveling — E07</b><span class="st">TRANSCODING</span></div><div class="pb"><i style="width:42%"></i></div></div>
+ <div class="qrow wait"><div class="l"><b>Solo Leveling — E08</b><span class="st">QUEUED</span></div><div class="pb"><i style="width:0%"></i></div></div>
+ <div class="qrow wait"><div class="l"><b>Kaiju No. 8 — E11</b><span class="st">QUEUED</span></div><div class="pb"><i style="width:0%"></i></div></div>`;
+const t=()=>{$('clk').textContent=new Date().toTimeString().slice(0,5)};t();setInterval(t,30e3);
+</script>
+</body>
+</html>

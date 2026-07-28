@@ -1,0 +1,25 @@
+{
+  "name": "hikari-mobile",
+  "private": true,
+  "version": "0.23.1",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@aparajita/capacitor-biometric-auth": "^10.0.0",
+    "@capacitor/android": "^8.4.2",
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/core": "^8.4.2",
+    "@capacitor/haptics": "^8.0.2",
+    "@supabase/supabase-js": "^2.58.0",
+    "hls.js": "^1.6.16",
+    "morphdom": "^2.7.8"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.4.2",
+    "vite": "^6.3.5"
+  }
+}

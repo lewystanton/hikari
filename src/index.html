@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src https: data: blob:; connect-src https://graphql.anilist.co https://api.jikan.moe https://kitsu.io https://api.themoviedb.org https://api.trace.moe https://hpitodrotmbwtnspyxuq.supabase.co wss://hpitodrotmbwtnspyxuq.supabase.co hikari-media:; media-src https: hikari-media: blob:; frame-src https://www.youtube-nocookie.com https://www.youtube.com;">
+  <title>Hikari — Anime Library</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="shell">
+
+  <!-- glass rail -->
+  <nav class="rail">
+    <svg class="brand-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-label="Hikari">
+      <path d="M2.8 6.2 C8 4.4 16 4.4 21.2 6.2" stroke-linecap="round"/>
+      <path d="M5.2 9.4 h13.6" stroke-linecap="round"/>
+      <path d="M6.6 5.4 L7.4 20.5 M17.4 5.4 L16.6 20.5" stroke-linecap="round"/>
+    </svg>
+    <button class="nav-btn active" data-view="all" data-tip="Library">
+      <span data-icon="books"></span>
+    </button>
+    <button class="nav-btn" data-view="discover" data-tip="Discover — picks for you">
+      <span data-icon="sparkle"></span>
+    </button>
+    <button class="nav-btn" data-view="airing" data-tip="Airing — week calendar">
+      <span data-icon="calendar-dots"></span>
+      <span class="nb-badge" id="nav-air-badge" hidden></span>
+    </button>
+    <button class="nav-btn" data-view="announce" data-tip="Announcements — what's been confirmed">
+      <span data-icon="megaphone"></span>
+      <span class="nb-badge" id="nav-ann-badge" hidden></span>
+    </button>
+    <button class="nav-btn" data-view="favourites" data-tip="Favourites">
+      <span data-icon="heart"></span>
+    </button>
+    <button class="nav-btn" data-view="dubbed" data-tip="English dub">
+      <span data-icon="microphone"></span>
+    </button>
+    <button class="nav-btn" data-view="unwatched" data-tip="Unwatched">
+      <span data-icon="clock-countdown"></span>
+    </button>
+    <div class="grow"></div>
+    <button class="nav-btn" data-action="open-settings" data-tip="Settings">
+      <span data-icon="gear-six"></span>
+    </button>
+    <button class="nav-btn" data-action="open-identify" data-tip="Identify from a screenshot">
+      <span data-icon="images"></span>
+    </button>
+    <button class="nav-btn add" data-action="open-search" data-tip="Add anime — Ctrl K">
+      <span data-icon="plus"></span>
+    </button>
+  </nav>
+
+  <!-- titlebar -->
+  <header class="titlebar">
+    <div class="crumb"><span class="dot"></span><span id="crumb-text">Hikari</span>&nbsp;<span class="sub" id="crumb-sub">— anime library</span></div>
+    <div class="spacer"></div>
+    <div class="win-ctrls">
+      <button id="win-min" title="Minimize"><span data-icon="minus"></span></button>
+      <button id="win-max" title="Maximize"><span data-icon="square"></span></button>
+      <button class="close" id="win-close" title="Close"><span data-icon="x"></span></button>
+    </div>
+  </header>
+
+  <!-- workspace -->
+  <main class="main">
+    <canvas id="bg-shader"></canvas>
+    <div id="amb"><img id="amb-a" alt=""><img id="amb-b" alt=""></div>
+    <div id="grain"></div>
+    <section class="screen active" id="screen-shelf"></section>
+    <section class="screen" id="screen-detail"></section>
+  </main>
+
+  <!-- status bar -->
+  <footer class="statusbar">
+    <span class="sb-seg"><b id="sb-shows">0</b>&nbsp;shows</span>
+    <span class="sb-sep"></span>
+    <span class="sb-seg"><b id="sb-airing">0</b>&nbsp;airing</span>
+    <button class="sb-seg btn" id="sb-import" data-action="import-pill" hidden>
+      <span class="sb-spin"></span><span class="sb-txt" id="sb-import-txt"></span>
+    </button>
+    <button class="sb-seg btn" id="sb-convert" data-action="convert-pill" hidden>
+      <span class="sb-spin"></span><span class="sb-txt" id="sb-convert-txt"></span>
+      <span class="sb-bar"><i id="sb-conv-bar"></i></span>
+    </button>
+    <span class="sb-grow"></span>
+    <button class="sb-seg btn" id="sb-sync" data-action="sync-pill" hidden>
+      <span class="sb-txt" id="sb-sync-txt">SYNC</span>
+    </button>
+    <div class="engine-pill"><span class="live-dot idle" id="live-dot"></span>ANILIST <b id="pill-count">0 SERIES</b></div>
+    <span class="sb-sep"></span>
+    <span class="sb-seg" id="sb-clock">--:--</span>
+  </footer>
+
+</div>
+
+<!-- Search palette -->
+<div id="searchModal" class="modal-backdrop" hidden>
+  <div class="search-panel" role="dialog" aria-label="Search anime">
+    <div class="search-box">
+      <span data-icon="magnifying-glass"></span>
+      <input id="searchInput" type="text" placeholder="Search the AniList database…" autocomplete="off" spellcheck="false">
+      <span id="searchSpinner" class="spinner" hidden></span>
+      <kbd>ESC</kbd>
+    </div>
+    <div id="searchResults" class="search-results">
+      <p class="search-idle">TYPE A TITLE — RESULTS APPEAR AS YOU TYPE</p>
+    </div>
+  </div>
+</div>
+
+<!-- Add source -->
+<div id="sourceModal" class="modal-backdrop" hidden>
+  <div class="source-panel" role="dialog" aria-label="Add source">
+    <div class="card-h"><span class="t">Add a source</span><span class="badge">WHERE YOU WATCH</span></div>
+    <div id="brandGrid" class="brand-grid"></div>
+    <div class="field">
+      <label for="sourceName">Name</label>
+      <input id="sourceName" type="text" placeholder="e.g. Crunchyroll" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="field">
+      <label for="sourceUrl">URL</label>
+      <input id="sourceUrl" type="text" placeholder="https://…" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="panel-actions">
+      <button class="btn-ghost" data-action="close-source-modal">Cancel</button>
+      <button class="btn-primary" data-action="save-source">Add source</button>
+    </div>
+  </div>
+</div>
+
+<!-- Settings -->
+<div id="settingsModal" class="modal-backdrop" hidden>
+  <div class="source-panel settings-panel" role="dialog" aria-label="Settings">
+    <div class="card-h"><span class="t">Settings</span><span class="badge">STORED LOCALLY</span></div>
+    <div class="set-tabs" role="tablist">
+      <button class="set-tab on" data-action="set-tab" data-tab="artwork" role="tab">Artwork</button>
+      <button class="set-tab" data-action="set-tab" data-tab="media" role="tab">Local media</button>
+      <button class="set-tab" data-action="set-tab" data-tab="data" role="tab">Data</button>
+      <button class="set-tab" data-action="set-tab" data-tab="sync" role="tab">Sync</button>
+      <button class="set-tab" data-action="set-tab" data-tab="about" role="tab">About</button>
+    </div>
+    <div class="set-body">
+
+      <section class="set-sec on" data-sec="artwork">
+        <div class="field">
+          <label for="tmdbKey">TMDB API key · optional</label>
+          <div class="key-wrap">
+            <input id="tmdbKey" type="text" placeholder="Paste your v3 API key…" autocomplete="off" spellcheck="false" data-mask>
+            <span class="key-mask" aria-hidden="true"></span>
+            <button class="key-eye" data-action="key-eye" tabindex="-1" title="Reveal"><span data-icon="eye"></span></button>
+          </div>
+        </div>
+        <div class="field">
+          <label for="traceKey">trace.moe API key · optional</label>
+          <div class="key-wrap">
+            <input id="traceKey" type="text" placeholder="Only needed past 100 searches a month…" autocomplete="off" spellcheck="false" data-mask>
+            <span class="key-mask" aria-hidden="true"></span>
+            <button class="key-eye" data-action="key-eye" tabindex="-1" title="Reveal"><span data-icon="eye"></span></button>
+          </div>
+        </div>
+        <p class="set-hint">Screenshot identification runs on <b>trace.moe</b>, which caps how many
+        searches an address may make. A key raises that cap — keys go to the project's supporters
+        rather than being handed out freely, so leave this empty unless you have one. It syncs to the
+        phone as well.</p>
+        <p class="set-hint">Unlocks full artwork galleries (all poster &amp; backdrop variants — what Plex uses).
+        Free: themoviedb.org → Settings → API → “API Key (v3 auth)”.</p>
+        <div class="field">
+          <label for="fanartKey">fanart.tv API key · optional</label>
+          <div class="key-wrap">
+            <input id="fanartKey" type="text" placeholder="Paste your project key…" autocomplete="off" spellcheck="false" data-mask>
+            <span class="key-mask" aria-hidden="true"></span>
+            <button class="key-eye" data-action="key-eye" tabindex="-1" title="Reveal"><span data-icon="eye"></span></button>
+          </div>
+        </div>
+        <p class="set-hint">Adds HD community posters &amp; backgrounds. Free: fanart.tv → sign up → API.</p>
+      </section>
+
+      <section class="set-sec" data-sec="media">
+        <p class="mini-label">Library folders · scanned in priority order</p>
+        <div id="mediaRoots" class="mroot-list"></div>
+        <div class="set-row">
+          <button class="btn-ghost" data-action="media-add-root">Add folder…</button>
+          <button class="btn-primary" data-action="media-scan">Scan for episodes</button>
+        </div>
+        <label class="chk-row"><input type="checkbox" id="autoScan" checked> Watch these folders for new shows</label>
+        <p class="set-hint">Rechecks every 15 minutes and when you come back to the window. Anything
+        that matches a show already on your shelf gets linked on its own; anything that doesn't is
+        left for Import so nothing is guessed at silently.</p>
+        <p class="set-hint">Point at your anime folders — local drives and network shares both work
+        (<b>Show → Season 1 → files</b>, Plex-style; <b>Season 0</b> counts as specials). Filenames like
+        <b>S02E01</b>, <b>1x01</b> or <b>“Show - 05”</b> are matched to episodes automatically. When the
+        same episode exists in several folders, the higher folder in this list wins.</p>
+        <p class="set-hint" style="margin-top:14px">To pre-convert a show's episodes for instant
+        playback, open the show and use <b>Pre-convert for instant play</b> on its Local files
+        card (or the ⋯ menu). Converted copies live in a cache that self-prunes at 10&nbsp;GB.</p>
+      </section>
+
+      <section class="set-sec" data-sec="data">
+        <div class="set-row">
+          <button class="btn-ghost" data-action="export-data">Export library…</button>
+          <button class="btn-ghost" data-action="import-data">Import backup…</button>
+        </div>
+        <p class="set-hint">Export writes shows, watched history, artwork picks and keys to a JSON file.
+        Import merges a backup into this library — nothing is deleted.</p>
+        <p class="mini-label" style="margin-top:16px">Notifications</p>
+        <label class="chk-row"><input type="checkbox" id="notifyEps" checked> Notify me when a tracked show airs a new episode</label>
+        <p class="set-hint">Windows notifications while Hikari is running — checked on launch and every half hour.</p>
+      </section>
+
+      <section class="set-sec" data-sec="sync">
+        <div id="syncSignedOut">
+          <p class="mini-label">Hikari account</p>
+          <div class="field">
+            <label for="syncEmail">Email</label>
+            <input id="syncEmail" type="email" placeholder="you@example.com" autocomplete="off" spellcheck="false">
+          </div>
+          <div class="field">
+            <label for="syncPass">Password</label>
+            <input id="syncPass" type="password" placeholder="8+ characters" autocomplete="off">
+          </div>
+          <div class="set-row">
+            <button class="btn-primary" data-action="sync-signin">Sign in</button>
+            <button class="btn-ghost" data-action="sync-signup">Create account</button>
+          </div>
+          <p class="set-hint">One account keeps your library, watched history and artwork picks in
+          live sync across devices (the mobile app signs into the same account). Data lives in your
+          own Supabase project — nobody else's server.</p>
+        </div>
+        <div id="syncSignedIn" hidden>
+          <p class="mini-label">Signed in</p>
+          <p class="sync-who" id="syncWho">—</p>
+          <div class="kv-rows" id="syncStats"></div>
+          <div class="set-row" style="margin-top:14px">
+            <button class="btn-ghost" data-action="sync-now">Sync now</button>
+            <button class="btn-ghost danger" data-action="sync-signout">Sign out</button>
+          </div>
+          <p class="set-hint">Changes push automatically a few seconds after you make them, and other
+          devices apply them live. Watched history merges — nothing is ever un-ticked by a sync.</p>
+        </div>
+
+        <!-- The LAN media server: it binds every interface and serves your
+             local files to whatever holds the token, so it gets a visible
+             status, an off switch and a way to rotate the token. -->
+        <p class="mini-label" style="margin-top:22px">Remote play</p>
+        <div class="remote-box">
+          <div class="remote-head">
+            <span class="remote-dot" id="remoteDot"></span>
+            <span class="remote-state" id="remoteState">Checking…</span>
+            <button class="tgl" id="remoteToggle" data-action="remote-toggle" role="switch"
+                    aria-checked="false" aria-label="Remote play server"><i></i></button>
+          </div>
+          <div class="kv-rows" id="remoteStats"></div>
+          <div class="set-row" style="margin-top:12px">
+            <button class="btn-ghost" data-action="remote-rotate">Rotate token</button>
+          </div>
+          <p class="set-hint">Lets the phone stream files stored on this machine, over your local
+          network only — nothing is exposed to the internet. Turn it off and the phone falls back to
+          ticking episodes without playback. Rotating the token disconnects existing devices; they
+          pick the new one up on their next sync.</p>
+        </div>
+      </section>
+
+      <section class="set-sec" data-sec="about">
+        <div class="about-hero">
+          <svg class="about-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+            <path d="M2.8 6.2 C8 4.4 16 4.4 21.2 6.2" stroke-linecap="round"/>
+            <path d="M5.2 9.4 h13.6" stroke-linecap="round"/>
+            <path d="M6.6 5.4 L7.4 20.5 M17.4 5.4 L16.6 20.5" stroke-linecap="round"/>
+          </svg>
+          <div>
+            <p class="about-name">HIKARI <b id="aboutVersion">v—</b></p>
+            <p class="about-tag">Personal anime library · noir ghost</p>
+          </div>
+        </div>
+        <p class="mini-label">Runtime</p>
+        <div class="kv-rows" id="aboutRuntime"></div>
+        <p class="mini-label" style="margin-top:16px">Library</p>
+        <div class="kv-rows" id="aboutStats"></div>
+        <div class="set-row" style="margin-top:16px">
+          <button class="btn-ghost" data-action="open-data-dir">Open data folder…</button>
+        </div>
+        <p class="set-hint">Data lives in <b id="aboutDataDir">…</b>. Metadata by AniList, TVDB (via Skyhook),
+        MAL (via Jikan), Kitsu, AnimeSchedule.net, TMDB &amp; fanart.tv.</p>
+      </section>
+
+    </div>
+    <div class="panel-actions">
+      <button class="btn-ghost" data-action="close-settings">Cancel</button>
+      <button class="btn-primary" data-action="save-settings">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Full-screen local import -->
+<section id="importScreen" class="import-screen" hidden>
+  <header class="imp-head">
+    <div>
+      <h1 class="display">Import<em>.</em></h1>
+      <p class="imp-status" id="impStatus">SCANNING FOLDERS…</p>
+    </div>
+    <button class="glass-btn icon-only" data-action="import-close" title="Close"><span data-icon="x"></span></button>
+  </header>
+  <div class="imp-list" id="impList"></div>
+  <footer class="imp-foot" id="impFoot"></footer>
+</section>
+<!-- Local playback -->
+<div id="playerModal" class="modal-backdrop player-backdrop" hidden>
+  <div class="player-shell" role="dialog" aria-label="Player">
+    <div class="player-top">
+      <div class="pt-info"><b id="plTitle"></b><span class="pt-sub" id="plSub"></span></div>
+      <div class="pt-actions">
+        <span class="pt-conv" id="plConv" hidden></span>
+        <button class="glass-btn" id="plCc" data-action="pl-cc" hidden>CC</button>
+        <button class="glass-btn" data-action="pl-system">System player</button>
+        <button class="glass-btn icon-only" data-action="close-player" title="Close"><span data-icon="x"></span></button>
+      </div>
+    </div>
+    <div class="player-stage">
+      <video id="plVideo" controls preload="auto"></video>
+      <div class="pl-wait" id="plWait" hidden>
+        <span class="spinner"></span>
+        <p id="plWaitText">PREPARING…</p>
+        <div class="pl-bar"><i id="plBar"></i></div>
+        <p class="pl-note" id="plNote"></p>
+      </div>
+      <button class="btn-primary pl-next" id="plNext" data-action="pl-next" hidden>Next episode ▸</button>
+    </div>
+  </div>
+</div>
+
+<!-- Local media scan results -->
+<div id="scanModal" class="modal-backdrop" hidden>
+  <div class="art-panel yt-panel" role="dialog" aria-label="Local media scan">
+    <div class="card-h"><span class="t">Local media</span><span class="badge">FOLDER SCAN</span></div>
+    <div id="scanBody"></div>
+  </div>
+</div>
+
+<!-- Episode details -->
+<div id="epModal" class="modal-backdrop" hidden>
+  <div class="disc-panel" role="dialog" aria-label="Episode details">
+    <div id="epBody"></div>
+  </div>
+</div>
+
+<!-- Discover preview -->
+<div id="discModal" class="modal-backdrop" hidden>
+  <div class="disc-panel" role="dialog" aria-label="Show preview">
+    <div id="discBody"></div>
+  </div>
+</div>
+
+<!-- Trailer -->
+<!-- Identify an anime from a screenshot (trace.moe reverse image search).
+     Full-screen, same shape as the import screen — a fixed-height card could
+     not hold a variable-length result list without spilling off the bottom. -->
+<div id="idModal" class="import-screen id-screen" hidden>
+  <div class="imp-head id-head">
+    <div class="id-col id-head-row">
+      <div class="id-head-l">
+        <h1 class="big-title">IDENTIFY<span class="dot-accent">.</span></h1>
+        <p class="imp-status" id="idStatus">DROP A SCREENSHOT, PASTE ONE, OR CHOOSE A FILE</p>
+      </div>
+      <div class="id-head-r">
+        <span class="imp-count" id="idQuota" hidden></span>
+        <button class="glass-btn icon-only" data-action="id-close" title="Close"><span data-icon="x"></span></button>
+      </div>
+    </div>
+  </div>
+  <div class="id-main">
+    <div class="id-drop id-col" id="idDrop" tabindex="0">
+      <img id="idPreview" alt="" hidden>
+      <div class="id-drop-hint" id="idHint">
+        <span data-icon="images"></span>
+        <b>Drop a screenshot here</b>
+        <small>or press Ctrl V to paste &middot; click to browse</small>
+      </div>
+      <input type="file" id="idFile" accept="image/*" hidden>
+    </div>
+    <div id="idBody" class="id-results id-col"></div>
+  </div>
+  <div class="imp-foot">
+    <span class="grow"></span>
+    <button class="btn-ghost" data-action="id-close">Close</button>
+    <button class="btn-primary" data-action="id-pick">Choose image…</button>
+  </div>
+</div>
+
+<!-- Shortcuts existed but nothing advertised them; ? brings up the list. -->
+<div id="keysModal" class="modal-backdrop" hidden>
+  <div class="keys-panel" role="dialog" aria-label="Keyboard shortcuts">
+    <div class="keys-head">
+      <h2>Keyboard shortcuts</h2>
+      <button class="glass-btn icon-only" data-action="close-keys" title="Close"><span data-icon="x"></span></button>
+    </div>
+    <div class="keys-grid" id="keysGrid"></div>
+  </div>
+</div>
+
+<div id="trailerModal" class="modal-backdrop" hidden>
+  <div class="trailer-panel" role="dialog" aria-label="Trailer">
+    <div id="trailerBody"></div>
+    <button class="glass-btn icon-only trailer-x" data-action="close-trailer" title="Close"><span data-icon="x"></span></button>
+  </div>
+</div>
+
+<!-- Artwork picker -->
+<div id="artModal" class="modal-backdrop" hidden>
+  <div class="art-panel" role="dialog" aria-label="Choose artwork">
+    <div class="card-h">
+      <span class="t">Artwork</span>
+      <p class="mini-label art-loading" id="artLoading" hidden><span class="spinner"></span> SEARCHING MORE SOURCES…</p>
+      <span class="badge">←&nbsp;→ BROWSE · ENTER APPLIES</span>
+    </div>
+    <div id="artBody"></div>
+  </div>
+</div>
+
+<div id="toasts"></div>
+
+<script src="lib/hls.min.js"></script>
+<script src="lib/morphdom.min.js"></script>
+<script src="lib/supabase.min.js"></script>
+<script src="sync-config.js"></script>
+<script src="icons.js"></script>
+<script src="shader.js"></script>
+<script src="api.js"></script>
+<script src="app.js"></script>
+<script src="sync.js"></script>
+</body>
+</html>

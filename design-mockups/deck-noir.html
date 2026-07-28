@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>HIKARI — Deck · Noir</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#090B12; --glass:rgba(15,18,30,.62); --glass2:rgba(19,22,36,.5); --line:rgba(150,160,255,.1);
+  --txt:#EAECF8; --dim:#8E95B5; --faint:#585F7E; --vio:#8B7CFF; --pnk:#FF6EB0; --grn:#4EDCA8;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--txt);font-size:13px;
+  display:grid;grid-template-rows:34px 1fr 42px}
+.mono{font-family:'JetBrains Mono',monospace}
+
+/* ambient backdrop under everything */
+.amb{position:fixed;inset:0;z-index:0;pointer-events:none}
+.amb img{width:100%;height:100%;object-fit:cover;filter:blur(64px) saturate(1.25) brightness(.32);transform:scale(1.3)}
+.amb::after{content:"";position:absolute;inset:0;background:radial-gradient(1000px 600px at 70% -10%,rgba(139,124,255,.14),transparent 60%),rgba(9,11,18,.45)}
+
+.tbar{position:relative;z-index:10;display:flex;align-items:center;background:rgba(7,9,14,.72);backdrop-filter:blur(14px);
+  border-bottom:1px solid var(--line);padding-left:12px;-webkit-app-region:drag;user-select:none}
+.tbar .mark{width:14px;height:14px;margin-right:8px}
+.tbar b{font-size:10.5px;letter-spacing:.28em;font-weight:600}
+.tbar .ver{font-size:9px;color:var(--faint);margin-left:10px;letter-spacing:.1em}
+.wbtns{margin-left:auto;display:flex;height:100%}
+.wb{width:44px;display:grid;place-items:center;color:var(--dim);font-size:11px}
+.wb:hover{background:rgba(255,255,255,.07)}
+.wb.x:hover{background:#D24B4B;color:#fff}
+
+.app{position:relative;z-index:1;display:grid;grid-template-columns:212px 1fr;min-height:0}
+.rail{background:var(--glass);backdrop-filter:blur(22px);border-right:1px solid var(--line);
+  padding:14px 10px;overflow-y:auto}
+.grp{font-size:9px;letter-spacing:.24em;color:var(--faint);padding:14px 10px 7px}
+.ri{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:9px;color:var(--dim);cursor:pointer;position:relative;margin-bottom:1px}
+.ri:hover{background:rgba(255,255,255,.05);color:var(--txt)}
+.ri.on{background:rgba(139,124,255,.14);color:var(--txt);box-shadow:inset 0 0 0 1px rgba(139,124,255,.3),0 0 18px rgba(139,124,255,.12)}
+.ri .ic{width:16px;text-align:center;font-size:13px}
+.ri .n{margin-left:auto;font-size:10px;color:var(--faint);background:rgba(255,255,255,.06);padding:2px 7px;border-radius:8px}
+.ri.on .n{color:var(--vio);background:rgba(139,124,255,.16)}
+
+.main{display:flex;flex-direction:column;min-width:0;min-height:0}
+.topbar{display:flex;align-items:center;gap:10px;padding:10px 18px;border-bottom:1px solid var(--line);
+  background:var(--glass2);backdrop-filter:blur(18px)}
+.srch{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.05);border:1px solid var(--line);
+  border-radius:10px;padding:7px 12px;color:var(--faint);width:270px;font-size:12px}
+.srch kbd{margin-left:auto;font-size:9px;background:rgba(255,255,255,.07);padding:2px 6px;border-radius:4px}
+.chips{display:flex;gap:6px;margin-left:6px}
+.chip{padding:6px 13px;border-radius:999px;font-size:11.5px;font-weight:500;color:var(--dim);cursor:pointer;border:1px solid transparent}
+.chip:hover{color:var(--txt)}
+.chip.on{color:#fff;border-color:rgba(139,124,255,.55);background:rgba(139,124,255,.16);
+  box-shadow:0 0 14px rgba(139,124,255,.25)}
+.tb-r{margin-left:auto;display:flex;gap:8px;color:var(--dim);font-size:11.5px}
+.sel{background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:8px;padding:6px 11px}
+
+.scroll{overflow-y:auto;min-height:0;flex:1}
+.scroll::-webkit-scrollbar{width:9px}
+.scroll::-webkit-scrollbar-thumb{background:#262B45;border-radius:8px;border:2px solid transparent;background-clip:padding-box}
+
+/* billboard — sharp banner, glass tiles */
+.bill{position:relative;height:315px;overflow:hidden;border-bottom:1px solid var(--line)}
+.bill>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 24%}
+.bill .sh{position:absolute;inset:0;background:linear-gradient(0deg,var(--bg) 0%,rgba(9,11,18,.28) 40%,rgba(9,11,18,.32)),
+  linear-gradient(90deg,rgba(9,11,18,.82),transparent 52%)}
+.bill .in{position:absolute;left:26px;right:26px;bottom:20px;display:flex;align-items:flex-end;gap:20px}
+.bill h2{font-size:34px;font-weight:800;letter-spacing:-.015em;text-shadow:0 2px 24px rgba(0,0,0,.6)}
+.bill .sub{display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap}
+.gchip{font-size:10.5px;font-weight:600;padding:5px 11px;border-radius:999px;background:rgba(12,14,24,.55);
+  backdrop-filter:blur(10px);border:1px solid var(--line);color:var(--dim)}
+.gchip.v{color:var(--vio);border-color:rgba(139,124,255,.5)}
+.gchip.p{color:var(--pnk);border-color:rgba(255,110,176,.5)}
+.bact{margin-left:auto;display:flex;gap:9px;flex:none;align-items:center}
+.pb{display:inline-flex;align-items:center;gap:9px;padding:12px 22px;border-radius:12px;font-size:12.5px;font-weight:700;cursor:pointer;border:none}
+.pb.go{background:linear-gradient(90deg,var(--vio),#A98BFF);color:#0C0A1C;box-shadow:0 0 26px rgba(139,124,255,.45)}
+.pb.go:hover{box-shadow:0 0 40px rgba(139,124,255,.7)}
+.pb.gh{background:rgba(12,14,24,.55);backdrop-filter:blur(10px);color:var(--txt);border:1px solid var(--line)}
+.upnext{position:absolute;top:18px;right:20px;background:rgba(12,14,24,.6);backdrop-filter:blur(12px);
+  border:1px solid var(--line);border-radius:12px;padding:11px 14px;width:212px}
+.upnext .k{font-size:8.5px;letter-spacing:.26em;color:var(--faint);margin-bottom:6px}
+.upnext .t{font-size:12px;font-weight:600}
+.upnext .m{font-size:10px;color:var(--dim);margin-top:3px}
+.upnext .m b{color:var(--pnk)}
+.upnext .pr{height:3px;border-radius:3px;background:rgba(255,255,255,.1);margin-top:8px;overflow:hidden}
+.upnext .pr i{display:block;height:100%;width:76%;background:linear-gradient(90deg,var(--vio),var(--pnk))}
+
+/* rows */
+.row{padding:18px 26px 0}
+.rh{display:flex;align-items:baseline;gap:12px;margin-bottom:11px}
+.rh h3{font-size:12px;font-weight:700;letter-spacing:.2em;color:var(--txt)}
+.rh h3 i{font-style:normal;color:var(--vio);margin-right:8px}
+.rh .n{font-size:10px;color:var(--faint)}
+.rh .all{margin-left:auto;font-size:11px;color:var(--faint);cursor:pointer}
+.rh .all:hover{color:var(--vio)}
+.hs{display:flex;align-items:flex-start;gap:13px;overflow-x:auto;padding:2px 2px 14px;
+  mask-image:linear-gradient(90deg,#000 96%,transparent)}
+.hs::-webkit-scrollbar{height:0}
+.cc{flex:0 0 258px;min-width:0;width:258px;border-radius:14px;overflow:hidden;position:relative;cursor:pointer;
+  border:1px solid var(--line);background:var(--glass2);backdrop-filter:blur(10px);transition:.2s}
+.cc:hover{border-color:rgba(139,124,255,.5);box-shadow:0 0 24px rgba(139,124,255,.22);transform:translateY(-3px)}
+.cc img{width:100%;height:130px;object-fit:cover;display:block}
+.cc .ov{position:absolute;left:0;right:0;top:0;height:130px;background:linear-gradient(0deg,rgba(9,11,18,.8),transparent 55%)}
+.cc .ep{position:absolute;left:11px;top:100px;font-size:11px;font-weight:700}
+.cc .inf{padding:10px 12px 12px}
+.cc .t{font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cc .m{font-size:10px;color:var(--dim);margin-top:3px}
+.cc .bar{height:4px;border-radius:4px;background:rgba(255,255,255,.09);margin-top:9px;overflow:hidden}
+.cc .bar i{display:block;height:100%;border-radius:4px;background:linear-gradient(90deg,var(--vio),var(--pnk));
+  box-shadow:0 0 8px rgba(139,124,255,.6)}
+.at{flex:0 0 218px;min-width:0;width:218px;display:flex;gap:11px;background:var(--glass2);backdrop-filter:blur(10px);
+  border:1px solid var(--line);border-radius:13px;padding:10px;cursor:pointer;align-items:center}
+.at:hover{border-color:rgba(139,124,255,.45)}
+.at img{width:40px;height:56px;object-fit:cover;border-radius:8px}
+.at .tt{font-size:11.5px;font-weight:500;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.at .cd{font-size:10px;margin-top:4px;color:var(--dim)}
+.at .cd b{color:var(--grn);font-weight:600}
+.at .cd b.now{color:var(--pnk)}
+.at .cd .dub{color:var(--pnk);margin-left:6px;font-size:9px}
+
+/* grid — titles inside posters */
+.gridwrap{padding:6px 26px 26px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:15px 13px}
+.pc{position:relative;border-radius:13px;overflow:hidden;cursor:pointer;border:1px solid var(--line);transition:.18s}
+.pc:hover{transform:translateY(-4px)}
+.pc img{width:100%;aspect-ratio:2/2.95;object-fit:cover;display:block}
+.pc .veil{position:absolute;inset:0;background:linear-gradient(0deg,rgba(9,11,18,.88) 0%,rgba(9,11,18,.25) 34%,transparent 55%)}
+.pc .t{position:absolute;left:11px;right:11px;bottom:24px;font-size:12px;font-weight:600;line-height:1.35;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.pc .m{position:absolute;left:11px;right:11px;bottom:9px;font-size:9.5px;color:var(--dim)}
+.pc .sc{position:absolute;top:8px;left:8px;font-size:9.5px;font-weight:600;background:rgba(9,11,18,.66);
+  backdrop-filter:blur(8px);padding:3px 8px;border-radius:7px;border:1px solid var(--line)}
+.pc .bdg{position:absolute;top:8px;right:8px;display:flex;flex-direction:column;gap:4px;align-items:flex-end}
+.bdg i{font-style:normal;font-size:8px;font-weight:700;letter-spacing:.1em;padding:3px 6px;border-radius:5px;
+  background:rgba(9,11,18,.6);backdrop-filter:blur(6px)}
+.bdg .dub{color:var(--pnk);border:1px solid rgba(255,110,176,.5)}
+.bdg .loc{color:var(--grn);border:1px solid rgba(78,220,168,.5)}
+.bdg .fav{color:#FFD166;border:1px solid rgba(255,209,102,.5)}
+.pc .pr{position:absolute;left:0;right:0;bottom:0;height:3px;background:rgba(0,0,0,.5)}
+.pc .pr i{display:block;height:100%;background:linear-gradient(90deg,var(--vio),var(--pnk))}
+
+.qbar{position:relative;z-index:10;display:flex;align-items:center;gap:16px;background:rgba(7,9,14,.72);
+  backdrop-filter:blur(14px);border-top:1px solid var(--line);padding:0 16px;font-size:11px;color:var(--dim)}
+.qbar .spin{width:12px;height:12px;border:2px solid rgba(139,124,255,.25);border-top-color:var(--vio);border-radius:50%;animation:sp 1s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.qbar .qp{width:130px;height:4px;background:rgba(255,255,255,.08);border-radius:4px;overflow:hidden}
+.qbar .qp i{display:block;height:100%;width:42%;background:linear-gradient(90deg,var(--vio),var(--pnk))}
+.qbar b{color:var(--txt);font-weight:500}
+.qbar .sep{width:1px;height:16px;background:var(--line)}
+.qbar .right{margin-left:auto;display:flex;gap:14px}
+.qbar .ok{color:var(--grn)}
+</style>
+</head>
+<body>
+  <div class="amb"><img id="amb" alt=""></div>
+
+  <div class="tbar">
+    <svg class="mark" viewBox="0 0 24 24" fill="none" stroke="#8B7CFF" stroke-width="2"><path d="M3 7h18M5 7l1.2-3h11.6L19 7M7 7v13M17 7v13M4 20h16"/></svg>
+    <b>HIKARI</b><span class="ver mono">v2.0 — DECK · NOIR</span>
+    <div class="wbtns"><div class="wb">—</div><div class="wb">▢</div><div class="wb x">✕</div></div>
+  </div>
+
+  <div class="app">
+    <aside class="rail">
+      <div class="grp">LIBRARY</div>
+      <div class="ri on"><span class="ic">▦</span>All Shows<span class="n" id="nAll"></span></div>
+      <div class="ri"><span class="ic">◉</span>Airing<span class="n" id="nAir"></span></div>
+      <div class="ri"><span class="ic">♥</span>Favourites<span class="n">4</span></div>
+      <div class="ri"><span class="ic">◭</span>Dubbed<span class="n" id="nDub"></span></div>
+      <div class="ri"><span class="ic">◫</span>Unwatched</div>
+      <div class="grp">SOURCES</div>
+      <div class="ri"><span class="ic">⛁</span>Local files<span class="n">3</span></div>
+      <div class="ri"><span class="ic">◈</span>HIDIVE</div>
+      <div class="ri"><span class="ic">◈</span>Crunchyroll</div>
+      <div class="grp">MANAGE</div>
+      <div class="ri"><span class="ic">⇣</span>Import</div>
+      <div class="ri"><span class="ic">✎</span>Organize</div>
+      <div class="ri"><span class="ic">⚙</span>Settings</div>
+    </aside>
+
+    <div class="main">
+      <div class="topbar">
+        <div class="srch">⌕ Search library… <kbd>Ctrl K</kbd></div>
+        <div class="chips">
+          <div class="chip on">All</div><div class="chip">2026</div><div class="chip">Dubbed</div>
+          <div class="chip">Local</div><div class="chip">Comedy</div>
+        </div>
+        <div class="tb-r"><div class="sel">Sort: Airdate ↓</div><div class="sel">▦</div></div>
+      </div>
+
+      <div class="scroll">
+        <div class="bill">
+          <img id="bImg" alt=""><div class="sh"></div>
+          <div class="upnext">
+            <div class="k">UP NEXT</div>
+            <div class="t">S2 E6 — After Rain</div>
+            <div class="m">18m left in E5 · next dub <b>SAT 15:00</b></div>
+            <div class="pr"><i></i></div>
+          </div>
+          <div class="in">
+            <div>
+              <h2 id="bTitle"></h2>
+              <div class="sub" id="bSub"></div>
+            </div>
+            <div class="bact">
+              <button class="pb go">▶ Resume E6</button>
+              <button class="pb gh">Episodes</button>
+              <button class="pb gh">♥</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="rh"><h3><i>◆</i>CONTINUE</h3><span class="n" id="cwN"></span><span class="all">See all →</span></div>
+          <div class="hs" id="cw"></div>
+        </div>
+
+        <div class="row">
+          <div class="rh"><h3><i>◆</i>ON AIR</h3><span class="n" id="airN"></span><span class="all">Calendar →</span></div>
+          <div class="hs" id="air"></div>
+        </div>
+
+        <div class="row"><div class="rh"><h3><i>◆</i>LIBRARY</h3><span class="n" id="libN"></span></div></div>
+        <div class="gridwrap"><div class="grid" id="grid"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="qbar">
+    <div class="spin"></div>
+    <span>Converting <b>Solo Leveling — E07</b></span>
+    <div class="qp"><i></i></div><span class="mono">42%</span>
+    <span>· 3 queued</span>
+    <div class="sep"></div>
+    <span>Cache <b>4.2 GB</b> / 10 GB</span>
+    <div class="right"><span class="ok">● AniList</span><span class="ok">● AnimeSchedule</span><span class="mono" id="clock"></span></div>
+  </div>
+
+<script src="data.js"></script>
+<script>
+const D=window.HIKARI_DATA,$=id=>document.getElementById(id);
+const days=['SUN','MON','TUE','WED','THU','FRI','SAT'];
+function cd(at){const s=at*1000-Date.now();if(s<=0)return'<b class="now">OUT NOW</b>';
+ const d=Math.floor(s/86400e3),h=Math.floor(s%86400e3/3600e3);const dt=new Date(at*1000);
+ return `<b>${days[dt.getDay()]} ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}</b> · ${d?d+'d ':''}${h}h`;}
+$('amb').src=D.hero.banner;
+$('nAll').textContent=D.stats.shows;$('nAir').textContent=D.airing.length;
+$('nDub').textContent=D.grid.filter(s=>s.dub).length+'+';
+$('bImg').src=D.hero.banner;$('bTitle').textContent=D.hero.title;
+$('bSub').innerHTML=`<span class="gchip v">★ ${D.hero.score}</span><span class="gchip">${D.hero.format} · ${D.hero.year}</span>
+ <span class="gchip">${D.hero.studio}</span><span class="gchip">${D.hero.genres.join(' · ')}</span><span class="gchip p">EN DUB</span>`;
+$('cwN').textContent=D.cw.length+' shows';
+$('cw').innerHTML=D.cw.map(s=>`<div class="cc"><img src="${s.banner||s.cover}"><div class="ov"></div>
+ <div class="ep">EP ${s.watched+1} ready</div>
+ <div class="inf"><div class="t">${s.title}</div><div class="m">${s.episodes-s.watched} episodes left</div>
+ <div class="bar"><i style="width:${Math.round(s.watched/s.episodes*100)}%"></i></div></div></div>`).join('');
+$('airN').textContent=D.airing.length+' broadcasts';
+$('air').innerHTML=D.airing.map(a=>`<div class="at"><img src="${a.cover}"><div>
+ <div class="tt">${a.title}</div><div class="cd">EP ${a.ep} · ${cd(a.at)}${a.dub?'<span class="dub">DUB</span>':''}</div></div></div>`).join('');
+$('libN').textContent=D.stats.shows+' shows · sorted by airdate';
+$('grid').innerHTML=D.grid.map(s=>`<div class="pc" onmouseover="this.style.boxShadow='0 0 0 1.5px ${s.color||'#8B7CFF'}, 0 16px 40px -14px ${s.color||'#8B7CFF'}66'" onmouseout="this.style.boxShadow='none'">
+ <img loading="lazy" src="${s.cover}">
+ <div class="veil"></div>
+ <span class="sc">★ ${s.score||'—'}</span>
+ <span class="bdg">${s.fav?'<i class="fav">♥</i>':''}${s.dub?'<i class="dub">DUB</i>':''}${s.local?`<i class="loc">LOCAL ${s.local}</i>`:''}</span>
+ <div class="t">${s.title}</div><div class="m">${s.year} · ${s.format}${s.genres[0]?' · '+s.genres[0]:''}</div>
+ ${s.watched?`<div class="pr"><i style="width:${Math.min(100,Math.round(s.watched/(s.episodes||12)*100))}%"></i></div>`:''}
+</div>`).join('');
+const tick=()=>{$('clock').textContent=new Date().toTimeString().slice(0,5)};tick();setInterval(tick,30e3);
+</script>
+</body>
+</html>

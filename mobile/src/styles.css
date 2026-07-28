@@ -1,0 +1,1123 @@
+@import './fonts.css';
+
+/* HIKARI mobile — v3.
+
+   Motion rules this file holds itself to, because breaking them is what made
+   the old build stutter on a real phone:
+
+     · animate TRANSFORM and OPACITY only. `filter: brightness()` on a
+       full-screen screen-under-a-push repaints every child, every frame.
+     · never animate an element that carries a blur. Re-rasterising a
+       full-screen 18px blur at 60fps is the single most expensive thing a
+       phone GPU can be asked to do here. The ambient layer's blur is static;
+       only its opacity moves.
+     · no backdrop-filter anywhere on a scrolling surface. Even the tab bar
+       lost its glass: re-blurring against moving content every frame is a
+       reliable way to make an Android WebView flicker.
+       186 live blur regions in a chip grid is what made the filter sheet lag.
+     · entry animations are one-shot, scoped to `.enter`, and animate a
+       CONTAINER rather than every card. A `both`-filled animation that can be
+       re-triggered by a data re-render leaves content stranded at opacity:0.
+     · scroll-driven values arrive as custom properties on the screen root
+       (--sy, --par, --dive) and are distributed from there. */
+
+:root{
+  --font-display:"Archivo",system-ui,-apple-system,sans-serif;
+  --font-sans:"Hanken Grotesk",system-ui,-apple-system,sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,monospace;
+
+  --bg:#08080A; --bg-2:#0E0E12; --surface:#141419; --surface-2:#1B1B22; --surface-3:#232330;
+  --line:rgba(255,255,255,.10); --line-2:rgba(255,255,255,.055);
+  --ink:#F4F4F7; --muted:#9C9CA8; --faint:#61616D;
+  --accent:#F4F4F7; --accent-ink:#08080A; --accent-soft:rgba(244,244,247,.11);
+  --danger:#E0685B; --dub:#EEBB63; --dub-ink:#241704; --ok:#7FD08F; --live:#FF5A5F;
+
+  --sat:env(safe-area-inset-top,0px);
+  --sab:env(safe-area-inset-bottom,0px);
+  --tb:calc(var(--sab) + 60px);
+  --gut:18px;
+  --r-s:10px; --r-m:14px; --r-l:20px; --r-xl:26px;
+
+  --e-out:cubic-bezier(.22,1,.36,1);
+  --e-in:cubic-bezier(.55,0,1,.45);
+  --e-io:cubic-bezier(.65,0,.35,1);
+  --e-pop:cubic-bezier(.34,1.45,.64,1);
+  --t1:130ms; --t2:200ms; --t3:300ms; --t4:420ms;
+}
+
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;overscroll-behavior:none}
+body{
+  background:var(--bg);color:var(--ink);
+  font-family:var(--font-sans);font-size:14px;line-height:1.5;
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+  user-select:none;-webkit-user-select:none;
+}
+img{display:block;max-width:100%}
+button,input{font:inherit;color:inherit;background:none;border:0}
+button{cursor:pointer;text-align:left}
+h1,h2,h3{font-weight:800;letter-spacing:-.02em;font-family:var(--font-display)}
+#app{height:100dvh;position:relative;overflow:hidden;isolation:isolate}
+#satprobe{position:absolute;top:0;left:0;width:0;height:var(--sat);pointer-events:none;opacity:0}
+
+/* micro-label: the mono all-caps voice used for counts and eyebrows */
+.mono{font-family:var(--font-mono);font-size:8.5px;letter-spacing:.2em;text-transform:uppercase}
+.dot{display:inline-block;width:2px;height:2px;border-radius:9px;background:currentColor;
+  opacity:.45;margin:0 7px;vertical-align:3px;font-style:normal}
+
+/* ═══════════ screen stack ═══════════ */
+.stage{position:absolute;inset:0;z-index:1}
+.m-screen{
+  position:absolute;inset:0;
+  /* the show tint, painted straight onto the scroller — no extra element and
+     nothing for the scrolling content to composite against */
+  background:
+    radial-gradient(ellipse 100% 46% at 50% 0%,
+      color-mix(in srgb, var(--tint, transparent) 30%, transparent), transparent 70%),
+    var(--bg);
+  overflow-y:auto;overflow-x:hidden;overscroll-behavior-y:contain;
+  -webkit-overflow-scrolling:touch;scrollbar-width:none;
+  padding-bottom:var(--tb);
+}
+/* Scroll-driven values live on the elements that consume them, NOT on the
+   screen root: a custom property is inherited, so setting one on the root
+   invalidates style for every descendant each frame — 205 posters' worth. */
+.ptr{--ptr:0}             /* unitless: calc() cannot divide by a length */
+.amb{--sy:0px;--dive:0}
+[data-dive]{--par:0px;--dive:0}
+.m-screen::-webkit-scrollbar{display:none}
+.m-screen.hidden{display:none}
+.sc{position:relative;z-index:1;min-height:1px}
+
+/* tab change — a fast fade-through, not a slide. Tab bars are lateral. */
+.m-screen.fade{opacity:0;transform:translate3d(0,6px,0);
+  transition:opacity var(--t2) var(--e-out),transform var(--t2) var(--e-out)}
+.m-screen.fade.on{opacity:1;transform:none}
+.m-screen.fadeout{opacity:0;transition:opacity var(--t1) var(--e-in)}
+
+/* push / pop — the pushed screen slides, the one underneath eases back and
+   dims by fading toward the (near-black) stage behind it. No filters. */
+.m-screen.push{
+  transform:translate3d(100%,0,0);
+  transition:transform var(--t4) var(--e-out);
+  box-shadow:-24px 0 60px rgba(0,0,0,.6);
+}
+.m-screen.push.on{transform:translate3d(0,0,0)}
+.m-screen.push.dragging{transition:none}
+.m-screen.leaving{transform:translate3d(100%,0,0)}
+/* transform ONLY — the dim comes from the cheap .scrim overlay above, because
+   fading this element means promoting and re-blending a whole 200-poster screen */
+.m-screen.under{
+  transform:translate3d(calc(var(--under,0) * -20%),0,0) scale(calc(1 - var(--under,0) * .035));
+  transition:transform var(--t4) var(--e-out);
+}
+/* Promote ONLY while something is actually moving. Leaving will-change on
+   these kept a whole 200-poster screen in its own layer for as long as a
+   detail was open, which is exactly the kind of standing layer pressure that
+   makes a WebView start evicting and re-rasterising tiles. */
+.stage.animating .m-screen.push,
+.stage.animating .m-screen.under{will-change:transform}
+.m-screen.push.dragging ~ .m-screen.under,
+.m-screen.under.nofade{transition:none}
+
+/* ═══════════ ambient artwork ═══════════ */
+/* NOT position:fixed, and NOT re-translated per frame.
+
+   `position:fixed` inside an `overflow:auto` scroller is a long-standing
+   Android WebView trouble spot — it jitters and flickers while scrolling — and
+   re-translating it each frame (the version before that) forced a full-screen
+   blurred layer to repaint continuously. A plain absolutely-positioned box
+   scrolls away with the content, needs no per-frame work, and cannot desync
+   from what it sits behind. The veil fades it into --bg long before it
+   leaves, so nothing is visibly lost. */
+.amb{
+  position:absolute;top:0;left:0;right:0;height:100lvh;z-index:0;
+  overflow:hidden;pointer-events:none;background:var(--bg);
+}
+/* MEASURED (6x CPU throttle, library scroll): this one layer was ~75% of the
+   cost — 26.9fps with it, 103.9fps without. Removing only the blur got 34fps,
+   so the blur was never the main problem: its OPACITY was animating from
+   --dive on every scroll frame, forcing a full-screen blurred texture to be
+   re-blended continuously. It is now completely static, which lets the
+   compositor rasterise it once and simply reuse it. */
+.amb-i{
+  width:100%;height:100%;object-fit:cover;
+  transform:scale(1.18);transform-origin:50% 30%;
+  /* Only the detail screen carries this now, so the blur can stay — it is
+     also what keeps the layer promoted (removing the filter measured WORSE,
+     because without it the image paints inline with everything else). */
+  filter:blur(10px) brightness(.45);
+  opacity:.4;
+}
+.amb-tint{position:absolute;inset:0;font-style:normal;
+  background:radial-gradient(ellipse 95% 60% at 50% 8%,color-mix(in srgb,var(--tint) 34%,transparent),transparent 72%)}
+.amb-veil{position:absolute;inset:0;font-style:normal;
+  background:linear-gradient(180deg,rgba(8,8,10,.34),rgba(8,8,10,.76) 58%,var(--bg))}
+
+/* ═══════════ pull to refresh ═══════════ */
+.ptr{position:absolute;top:0;left:0;right:0;height:0;display:grid;place-items:center;
+  z-index:8;pointer-events:none}
+.ptr-i{
+  width:30px;height:30px;border-radius:99px;display:block;
+  border:2px solid var(--line);border-top-color:var(--ink);
+  transform:translate3d(0,calc(var(--ptr,0) * 1px - 34px),0) rotate(calc(var(--ptr,0) * 3deg));
+  opacity:calc(var(--ptr,0) / 46);
+}
+.ptr-settle .ptr-i{transition:transform var(--t3) var(--e-out),opacity var(--t3)}
+.refreshing .ptr-i{animation:spin .7s linear infinite;border-top-color:var(--ink)}
+@keyframes spin{from{transform:translate3d(0,20px,0) rotate(0)}to{transform:translate3d(0,20px,0) rotate(360deg)}}
+
+/* ═══════════ tab bar ═══════════ */
+.tabbar{
+  position:absolute;left:0;right:0;bottom:0;z-index:40;display:flex;
+  padding:5px 6px calc(var(--sab) + 7px);
+  /* Solid. A backdrop-filter here re-blurs against moving content on every
+     scrolled frame and is one of the more reliable ways to make an Android
+     WebView flicker. Over a near-black app the glass was barely readable. */
+  background:#0C0C10;
+  border-top:1px solid var(--line-2);
+}
+.tab{
+  flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;padding:7px 0 4px;
+  color:var(--faint);transition:color var(--t2) var(--e-out);touch-action:manipulation;
+}
+.tab-i{position:relative;display:grid;place-items:center;width:44px;height:26px;border-radius:99px}
+.tab-i::before{
+  content:"";position:absolute;inset:0;border-radius:99px;background:var(--accent-soft);
+  transform:scale(.55);opacity:0;transition:transform var(--t3) var(--e-pop),opacity var(--t2);
+}
+.tab svg{width:20px;height:20px;position:relative;transition:transform var(--t3) var(--e-pop)}
+.tab-l{font-family:var(--font-mono);font-size:7.5px;letter-spacing:.16em;text-transform:uppercase;
+  opacity:.9;transition:opacity var(--t2)}
+.tab.on{color:var(--ink)}
+.tab.on .tab-i::before{transform:scale(1);opacity:1}
+.tab.on svg{transform:translateY(-1px) scale(1.06)}
+.tab:active svg{transform:scale(.86)}
+.tab .bdg{
+  position:absolute;top:-2px;right:4px;min-width:15px;height:15px;border-radius:9px;padding:0 4px;
+  background:var(--live);color:#fff;font-family:var(--font-mono);font-size:8px;font-weight:700;
+  display:grid;place-items:center;font-style:normal;box-shadow:0 0 0 2px rgba(8,8,10,.9);
+}
+:root.themed .tabbar{border-top-color:color-mix(in srgb,var(--chrome) 40%,var(--line-2))}
+:root.themed .tab.on{color:color-mix(in srgb,var(--chrome) 55%,var(--ink))}
+:root.themed .tab.on .tab-i::before{background:color-mix(in srgb,var(--chrome) 18%,transparent)}
+
+/* ═══════════ toasts ═══════════ */
+#toasts{position:fixed;left:0;right:0;bottom:calc(var(--tb) + 14px);z-index:90;
+  display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none;padding:0 20px}
+.toast{
+  max-width:100%;background:rgba(30,30,38,.97);
+  border:1px solid var(--line);color:var(--ink);font-size:12.5px;font-weight:600;
+  padding:10px 18px;border-radius:99px;box-shadow:0 14px 36px rgba(0,0,0,.55);
+  animation:toastin var(--t3) var(--e-pop);transition:opacity var(--t2),transform var(--t2);
+}
+.toast.out{opacity:0;transform:translateY(8px) scale(.96)}
+.toast.err{border-color:color-mix(in srgb,var(--danger) 55%,transparent);color:#F3C0B9}
+@keyframes toastin{from{opacity:0;transform:translateY(16px) scale(.94)}to{opacity:1}}
+
+/* ═══════════ shared atoms ═══════════ */
+.pgtitle{
+  font-size:30px;line-height:1.08;padding:calc(var(--sat) + 26px) var(--gut) 6px;
+  display:flex;flex-direction:column;gap:5px;
+}
+.pgtitle span{font-family:var(--font-mono);font-size:8.5px;font-weight:400;letter-spacing:.22em;
+  text-transform:uppercase;color:var(--faint)}
+.sechead{display:flex;align-items:baseline;gap:10px;padding:26px var(--gut) 10px}
+.sechead h2{font-family:var(--font-sans);font-size:15px;font-weight:800;letter-spacing:0}
+.sh-n{font-family:var(--font-mono);font-size:8.5px;letter-spacing:.16em;color:var(--faint);text-transform:uppercase}
+.sec-t{font-family:var(--font-sans);font-size:15px;font-weight:800;letter-spacing:0}
+.mini-label{font-family:var(--font-mono);font-size:8.5px;letter-spacing:.24em;color:var(--faint);text-transform:uppercase}
+.txtbtn{margin-left:auto;display:inline-flex;align-items:center;gap:6px;font-family:var(--font-mono);
+  font-size:8.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);
+  border:1px solid var(--line);border-radius:99px;padding:6px 11px;transition:transform var(--t1) var(--e-out)}
+.txtbtn svg{width:11px;height:11px}
+.txtbtn:active{transform:scale(.94);background:var(--surface)}
+.endpad{height:32px}
+
+.btn-solid{
+  width:100%;display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  background:var(--accent);color:var(--accent-ink);font-weight:800;font-size:14px;
+  border-radius:var(--r-m);padding:14px;transition:transform var(--t1) var(--e-out),opacity var(--t2);
+}
+.btn-solid svg{width:14px;height:14px}
+.btn-solid:active{transform:scale(.97)}
+.btn-solid:disabled{opacity:.45}
+.btn-line{
+  width:100%;display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  border:1px solid var(--line);border-radius:var(--r-m);padding:13px;color:var(--muted);
+  font-weight:600;transition:transform var(--t1) var(--e-out),background var(--t2);
+}
+.btn-line.auto{width:auto;padding:11px 22px;margin-top:18px}
+.btn-line svg{width:15px;height:15px}
+.btn-line:active{transform:scale(.97);background:var(--surface)}
+.btn-line:disabled{opacity:.4}
+
+.empty{padding:70px 34px;text-align:center;color:var(--muted);display:flex;flex-direction:column;align-items:center}
+.empty-i{width:46px;height:46px;border-radius:99px;display:grid;place-items:center;
+  background:var(--surface);color:var(--faint);margin-bottom:16px}
+.empty-i svg{width:20px;height:20px}
+.empty-i.spin{animation:pulse 1.6s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:.5;transform:scale(.94)}50%{opacity:1;transform:scale(1)}}
+.empty b{font-family:var(--font-display);font-size:17px;color:var(--ink);margin-bottom:6px}
+.empty p{font-size:13px;line-height:1.65;color:var(--faint);max-width:270px}
+
+.chiprow{display:flex;gap:8px;overflow-x:auto;padding:4px var(--gut) 2px;scrollbar-width:none;scroll-padding-left:var(--gut)}
+.chiprow::-webkit-scrollbar{display:none}
+.chip{
+  flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;
+  font-size:12px;font-weight:600;padding:9px 14px;border-radius:99px;color:var(--muted);
+  background:var(--surface);border:1px solid var(--line-2);
+  transition:transform var(--t1) var(--e-out),background var(--t2),color var(--t2),border-color var(--t2);
+}
+.chip i{font-style:normal;font-family:var(--font-mono);font-size:8.5px;color:var(--faint)}
+.chip svg{width:11px;height:11px}
+.chip:active{transform:scale(.94)}
+.chip.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.chip.on i{color:inherit;opacity:.6}
+.chip.clear{color:var(--danger);border-color:color-mix(in srgb,var(--danger) 32%,transparent)}
+
+/* ═══════════ sticky search / filter bar ═══════════ */
+.libbar{
+  position:sticky;top:var(--sat);z-index:12;
+  display:flex;align-items:center;gap:9px;
+  padding:8px var(--gut) 10px;background:var(--bg);
+}
+.libbar.solo{padding-top:4px}
+/* fills the status-bar strip only once the bar has actually parked at the top */
+.libbar::before{content:"";position:absolute;left:0;right:0;bottom:100%;height:calc(var(--sat) + 1px);
+  background:var(--bg);opacity:0;transition:opacity var(--t2)}
+.libbar::after{content:"";position:absolute;left:0;right:0;top:100%;height:1px;
+  background:var(--line-2);opacity:0;transition:opacity var(--t2)}
+.m-screen.stuck .libbar::before,.m-screen.stuck .libbar::after{opacity:1}
+.sfield{
+  flex:1;min-width:0;display:flex;align-items:center;gap:9px;
+  background:var(--surface);border:1px solid var(--line-2);border-radius:99px;
+  padding:0 6px 0 14px;height:42px;transition:border-color var(--t2),background var(--t2);
+}
+.sfield.big{height:46px}
+.sfield:focus-within{border-color:color-mix(in srgb,var(--accent) 40%,transparent);background:var(--surface-2)}
+.sfield>svg{width:15px;height:15px;color:var(--faint);flex:0 0 auto}
+.sfield input{
+  flex:1;min-width:0;background:none;outline:0;font-size:14px;color:var(--ink);height:100%;
+  user-select:text;-webkit-user-select:text;
+}
+.sfield input::placeholder{color:var(--faint)}
+.sfield input::-webkit-search-cancel-button{display:none}
+.sclr{flex:0 0 auto;width:30px;height:30px;border-radius:99px;display:grid;place-items:center;
+  background:var(--surface-3);color:var(--muted);transition:transform var(--t1)}
+.sclr svg{width:11px;height:11px}
+.sclr:active{transform:scale(.88)}
+.iconbtn{
+  position:relative;flex:0 0 auto;width:42px;height:42px;border-radius:99px;
+  display:grid;place-items:center;color:var(--ink);
+  background:var(--surface);border:1px solid var(--line-2);
+  transition:transform var(--t1) var(--e-out),background var(--t2),color var(--t2);
+}
+.iconbtn:active{transform:scale(.9)}
+.iconbtn svg{width:19px;height:19px}
+.iconbtn.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.iconbtn .cnt{position:absolute;top:-3px;right:-3px;min-width:17px;height:17px;padding:0 4px;border-radius:9px;
+  background:var(--live);color:#fff;font-family:var(--font-mono);font-size:8.5px;font-weight:700;
+  display:grid;place-items:center;font-style:normal;box-shadow:0 0 0 2px var(--bg)}
+.iconbtn .tagdot{position:absolute;top:-4px;right:-4px;width:9px;height:9px;border-radius:99px;
+  background:var(--live);font-size:0;box-shadow:0 0 0 2px var(--bg)}
+
+/* ═══════════ library hero ═══════════ */
+/* Parallax moves the IMAGE inside the hero, never the hero box itself.
+   Translating the container pushed its bottom edge down past the section
+   header below it (the box stays in flow, so nothing follows it) — the art
+   crept out from behind the header and the hand-off to the ambient read as a
+   glitch. Moving the inner art keeps every edge exactly where it belongs. */
+.heroc{position:relative;opacity:calc(1 - var(--dive,0) * .72)}
+.herotrack{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;
+  overscroll-behavior-x:contain}
+.herotrack::-webkit-scrollbar{display:none}
+.hero{
+  position:relative;flex:0 0 100%;scroll-snap-align:start;display:block;width:100%;
+  height:min(62dvh,500px);overflow:hidden;background:var(--bg-2);
+}
+/* the art box is taller than its frame so it has room to drift */
+.hero-art{position:absolute;left:0;right:0;top:-7%;height:114%;display:block;
+  transform:translate3d(0,calc(var(--par,0px) * .3),0)}
+.hero-art img{width:100%;height:100%;object-fit:cover;object-position:50% 18%;
+  animation:kenburns 24s ease-in-out infinite alternate}
+/* a drifting image you cannot see is pure compositor cost (~14fps of it) */
+.m-screen.past-hero .hero-art img,.m-screen.past-hero .art-i img{animation-play-state:paused}
+@keyframes kenburns{from{transform:scale(1.02)}to{transform:scale(1.1)}}
+.hero-grad{position:absolute;inset:0;background:
+  linear-gradient(180deg,rgba(8,8,10,.5),rgba(8,8,10,0) 30%),
+  linear-gradient(180deg,rgba(8,8,10,0) 38%,rgba(8,8,10,.55) 68%,var(--bg) 99%)}
+.hero-body{position:absolute;left:var(--gut);right:var(--gut);bottom:26px;display:flex;flex-direction:column;gap:6px}
+.hero-eye{display:flex;align-items:center;gap:9px;font-family:var(--font-mono);font-size:8px;
+  letter-spacing:.26em;text-transform:uppercase;color:var(--muted)}
+.hero-eye i{width:6px;height:6px;border-radius:99px;background:var(--show,#fff);
+  box-shadow:0 0 14px var(--show,#fff);animation:blip 2.6s ease-in-out infinite}
+@keyframes blip{0%,100%{opacity:1}50%{opacity:.35}}
+.hero-title{font-family:var(--font-display);font-size:30px;font-weight:800;line-height:1.06;
+  letter-spacing:-.028em;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
+  overflow:hidden;text-shadow:0 2px 26px rgba(0,0,0,.5)}
+.hero-meta{font-size:12.5px;color:var(--muted);margin-top:1px}
+.hero-cta{display:inline-flex;align-items:center;gap:9px;align-self:flex-start;margin-top:12px;
+  background:var(--accent);color:var(--accent-ink);font-weight:800;font-size:13.5px;
+  border-radius:99px;padding:12px 24px;transition:transform var(--t1) var(--e-out);
+  box-shadow:0 10px 30px rgba(0,0,0,.4)}
+.hero-cta em{font-style:normal}
+.hero-cta svg{width:13px;height:13px}
+.hero:active .hero-cta{transform:scale(.96)}
+.herodots{position:absolute;left:0;right:0;bottom:10px;display:flex;justify-content:center;gap:5px;pointer-events:none}
+.herodots i{width:5px;height:5px;border-radius:99px;background:rgba(255,255,255,.3);
+  transition:width var(--t3) var(--e-out),background var(--t3)}
+.herodots i.on{background:var(--ink);width:16px}
+:root.themed .herodots i.on{background:var(--chrome)}
+
+/* ═══════════ rails ═══════════ */
+.rail{margin-top:4px}
+.rail-h{display:flex;align-items:center;gap:9px;font-family:var(--font-sans);font-size:15px;
+  font-weight:800;letter-spacing:0;padding:24px var(--gut) 12px}
+.rail-n{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:99px;
+  background:color-mix(in srgb,var(--live) 20%,transparent);color:var(--live)}
+.rail-n svg{width:11px;height:11px}
+.hrail{display:flex;align-items:flex-start;gap:11px;overflow-x:auto;overflow-y:hidden;
+  padding:0 var(--gut) 2px;scrollbar-width:none;scroll-snap-type:x proximity;
+  scroll-padding-left:var(--gut);overscroll-behavior-x:contain}
+.hrail::-webkit-scrollbar{display:none}
+
+/* continue watching — landscape still, progress on the art
+   (spans styled as boxes MUST be display:block: an inline box collapses the
+   rail's height on device and it grows an inner vertical scrollbar) */
+.cwc{flex:0 0 auto;width:224px;min-width:0;scroll-snap-align:start}
+.cwi{display:block;position:relative;aspect-ratio:16/9;border-radius:var(--r-m);overflow:hidden;
+  background:var(--surface);transition:transform var(--t2) var(--e-out)}
+.cwc:active .cwi{transform:scale(.965)}
+.cwi img{width:100%;height:100%;object-fit:cover}
+.cwi::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent 48%,rgba(4,4,6,.78))}
+.cwe{position:absolute;left:11px;bottom:11px;z-index:2;font-family:var(--font-mono);font-size:8.5px;
+  letter-spacing:.16em;color:#fff;text-shadow:0 1px 8px rgba(0,0,0,.85)}
+.cwplay{position:absolute;right:9px;bottom:8px;z-index:2;width:29px;height:29px;border-radius:99px;
+  background:rgba(244,244,247,.94);color:var(--accent-ink);display:grid;place-items:center}
+.cwplay svg{width:12px;height:12px;margin-left:1px}
+.cwp{position:absolute;left:0;right:0;bottom:0;height:3px;background:rgba(255,255,255,.16);z-index:2}
+.cwp i{display:block;height:100%;background:var(--show,#fff)}
+.cwc b{display:block;font-size:12px;font-weight:700;margin-top:9px;color:var(--ink);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* on air — poster tile with the countdown on the art */
+.airc{flex:0 0 auto;width:108px;min-width:0;scroll-snap-align:start}
+.api{display:block;position:relative;aspect-ratio:2/3;border-radius:var(--r-m);overflow:hidden;
+  background:var(--surface);transition:transform var(--t2) var(--e-out)}
+.airc:active .api{transform:scale(.955)}
+.api img{width:100%;height:100%;object-fit:cover}
+.api::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent 46%,rgba(4,4,6,.86))}
+.apw{position:absolute;left:8px;right:8px;bottom:8px;z-index:2;display:flex;flex-direction:column;gap:2px}
+.apw em{font-style:normal;font-family:var(--font-mono);font-size:8px;letter-spacing:.12em;
+  font-weight:600;color:var(--ink)}
+.apw em.dub{color:var(--dub)}
+.apw span{font-family:var(--font-mono);font-size:6.5px;letter-spacing:.14em;color:rgba(255,255,255,.6)}
+.airc b{display:block;font-size:10.5px;font-weight:600;margin-top:8px;line-height:1.32;color:var(--muted);
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;height:2.8em}
+
+/* ═══════════ poster grid ═══════════ */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:9px;padding:4px var(--gut) 4px}
+.grid.wide{grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:12px 9px}
+.card{
+  position:relative;display:block;
+  /* content-visibility:auto was here. It skips off-screen work, but cards
+     flip in and out of "skipped" right at the viewport edge, and that reads as
+     pop-in / flicker on a fast display. A modern phone does not need it. */
+}
+.pw{display:block;position:relative;aspect-ratio:2/3;border-radius:var(--r-m);overflow:hidden;
+  background:var(--surface);transition:transform var(--t2) var(--e-out)}
+.card:active .pw{transform:scale(.955)}
+.pw img{width:100%;height:100%;object-fit:cover}
+.pw::after{content:"";position:absolute;inset:0;border-radius:var(--r-m);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.07);pointer-events:none}
+.pw-grad{position:absolute;left:0;right:0;bottom:0;height:58%;z-index:1;
+  background:linear-gradient(180deg,transparent,rgba(4,4,6,.9))}
+.ptt{position:absolute;left:9px;right:9px;bottom:9px;z-index:2;font-size:10px;font-weight:700;
+  line-height:1.3;color:var(--ink);text-shadow:0 1px 6px rgba(0,0,0,.75);
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.card.capd .ptt,.card.capd .pw-grad{display:none}
+.cap{display:block;padding-top:9px}
+.cap b{display:block;font-size:11.5px;font-weight:700;line-height:1.32;color:var(--ink);
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;height:2.65em}
+.cap small{display:block;font-family:var(--font-mono);font-size:7.5px;letter-spacing:.14em;
+  color:var(--faint);margin-top:4px;text-transform:uppercase}
+/* Corner budget on a 106px poster is one job per corner: score top-left,
+   status flags top-right, title along the whole bottom edge. "Finished" is
+   the progress bar rather than a third badge — same information, and it
+   leaves the title its full width instead of clipping it mid-word. */
+.prog{position:absolute;left:0;right:0;bottom:0;height:3px;background:rgba(0,0,0,.6);z-index:3}
+.prog i{display:block;height:100%;background:var(--show,#fff);transition:width var(--t3) var(--e-out)}
+.prog.done i{background:var(--ok)}
+.flags{position:absolute;top:7px;right:7px;z-index:3;display:flex;flex-direction:column;
+  align-items:flex-end;gap:4px}
+.badge{font-family:var(--font-mono);font-size:7px;font-weight:600;font-style:normal;
+  letter-spacing:.14em;padding:3.5px 6px;border-radius:6px}
+.badge.dub{background:var(--dub);color:var(--dub-ink)}
+.badge.air{background:var(--live);color:#fff}
+.score{position:absolute;left:7px;top:7px;z-index:3;display:inline-flex;align-items:center;gap:3px;
+  font-family:var(--font-mono);font-size:8px;font-weight:600;color:var(--ink);
+  background:rgba(8,8,11,.7);border-radius:6px;padding:3.5px 6px}
+.score svg{width:8px;height:8px;color:var(--dub)}
+
+/* ═══════════ detail ═══════════ */
+/* sticky detail chrome — floats over the art, becomes a bar past the hero */
+.d-topbar{
+  position:sticky;top:0;z-index:30;
+  height:calc(var(--sat) + 56px);padding:var(--sat) 13px 0;
+  display:flex;align-items:center;gap:12px;
+  margin-bottom:calc(0px - var(--sat) - 56px);   /* float over the artwork */
+  pointer-events:none;
+}
+.d-topbar>*{pointer-events:auto}
+.d-topbar::before{
+  content:"";position:absolute;inset:0;z-index:-1;
+  background:rgba(10,10,13,.88);border-bottom:1px solid var(--line-2);
+  opacity:0;transition:opacity var(--t2) var(--e-out);
+}
+.m-screen.past-hero .d-topbar::before{opacity:1}
+.dtb-title{
+  flex:1;min-width:0;font-size:14px;font-weight:700;color:var(--ink);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  opacity:0;transform:translateY(6px);
+  transition:opacity var(--t2) var(--e-out),transform var(--t2) var(--e-out);
+}
+.m-screen.past-hero .dtb-title{opacity:1;transform:none}
+.backbtn{
+  flex:0 0 auto;
+  width:40px;height:40px;border-radius:99px;display:grid;place-items:center;
+  background:rgba(8,8,10,.5);border:1px solid rgba(255,255,255,.16);
+  transition:transform var(--t1) var(--e-out);
+}
+.backbtn.ghost{margin-left:auto}
+.backbtn.ghost svg{width:15px;height:15px;margin:0}
+.backbtn:active{transform:scale(.88)}
+.backbtn svg{width:17px;height:17px;margin-left:-2px}
+:root.themed .backbtn{border-color:color-mix(in srgb,var(--chrome) 48%,rgba(255,255,255,.16))}
+
+.art{position:relative;height:min(50dvh,430px);overflow:hidden;background:var(--bg-2);
+  opacity:calc(1 - var(--dive,0) * .8)}
+.art-i{position:absolute;left:0;right:0;top:-7%;height:114%;display:block;
+  transform:translate3d(0,calc(var(--par,0px) * .3),0)}
+.art-i img{width:100%;height:100%;object-fit:cover;object-position:50% 16%;
+  animation:kenburns 26s ease-in-out infinite alternate}
+.art-grad{position:absolute;inset:0;background:
+  linear-gradient(180deg,rgba(8,8,10,.42),rgba(8,8,10,0) 26%),
+  linear-gradient(180deg,rgba(8,8,10,0) 34%,rgba(8,8,10,.5) 62%,rgba(8,8,10,.9) 92%,var(--bg) 100%)}
+.art-hint{position:absolute;right:13px;top:calc(var(--sat) + 12px);z-index:3;width:34px;height:34px;
+  border-radius:99px;display:grid;place-items:center;color:var(--ink);
+  background:rgba(8,8,10,.62);border:1px solid rgba(255,255,255,.14)}
+.art-hint svg{width:15px;height:15px;opacity:.9}
+
+.dhead{position:relative;z-index:2;padding:0 var(--gut);margin-top:-124px}
+.dhead h1{font-size:25px;line-height:1.1;text-shadow:0 2px 22px rgba(0,0,0,.6);
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.dmeta{display:flex;flex-wrap:wrap;align-items:center;font-family:var(--font-mono);font-size:9px;
+  letter-spacing:.16em;color:var(--muted);text-transform:uppercase;margin-top:10px}
+.dmeta .dot{color:var(--show,var(--faint));opacity:1;width:3px;height:3px}
+.dubtag{background:var(--dub);color:var(--dub-ink);padding:3px 8px;border-radius:5px;
+  font-weight:700;margin-left:10px;letter-spacing:.14em}
+
+/* the watch row doubles as the divider between the art and the page body,
+   so the billboard never ends in a hard horizontal cut */
+.watchrow{position:relative;z-index:2;margin:20px var(--gut) 0;padding-bottom:18px;
+  border-bottom:1px solid var(--line-2);display:flex;flex-direction:column;gap:11px}
+.wr-main{display:flex;align-items:center;gap:9px}
+.watch-cta{
+  flex:1;min-width:0;display:inline-flex;align-items:center;justify-content:center;gap:9px;
+  background:var(--brand,var(--surface-3));color:var(--brand-ink,#fff);text-decoration:none;
+  font-weight:800;font-size:14px;border-radius:99px;padding:14px 18px;
+  box-shadow:0 10px 26px color-mix(in srgb,var(--brand,#000) 30%,transparent);
+  transition:transform var(--t1) var(--e-out);
+}
+.watch-cta.local{background:var(--accent);color:var(--accent-ink);
+  box-shadow:0 10px 26px rgba(244,244,247,.16)}
+.watch-cta em{font-style:normal;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.watch-cta svg{width:14px;height:14px;flex:0 0 auto}
+.watch-cta:active{transform:scale(.97)}
+.wr-none{flex:1;font-family:var(--font-mono);font-size:8.5px;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--faint)}
+.roundbtn{flex:0 0 auto;width:44px;height:44px;border-radius:99px;display:grid;place-items:center;
+  color:var(--muted);background:var(--surface);border:1px solid var(--line-2);
+  transition:transform var(--t1) var(--e-out),color var(--t2),background var(--t2)}
+.roundbtn svg{width:18px;height:18px}
+.roundbtn:active{transform:scale(.88)}
+.roundbtn.on{color:#fff;background:color-mix(in srgb,var(--danger) 26%,var(--surface));
+  border-color:color-mix(in srgb,var(--danger) 45%,transparent)}
+.wr-chips{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin:0 calc(var(--gut) * -1);
+  padding:0 var(--gut)}
+.wr-chips::-webkit-scrollbar{display:none}
+.srcchip{flex:0 0 auto;display:inline-flex;align-items:center;gap:8px;text-decoration:none;
+  font-size:12px;font-weight:700;color:var(--ink);white-space:nowrap;
+  border:1px solid color-mix(in srgb,var(--brand) 50%,transparent);
+  background:color-mix(in srgb,var(--brand) 13%,transparent);
+  border-radius:99px;padding:9px 15px;transition:transform var(--t1) var(--e-out)}
+.srcchip:active{transform:scale(.95)}
+.srcchip i{width:7px;height:7px;border-radius:99px;background:var(--brand)}
+.ghostchip{flex:0 0 auto;display:inline-flex;align-items:center;gap:7px;text-decoration:none;
+  font-family:var(--font-mono);font-size:8.5px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--muted);border:1px solid var(--line);border-radius:99px;padding:10px 14px;white-space:nowrap}
+.ghostchip svg{width:11px;height:11px}
+
+.seasonbtn{
+  display:flex;align-items:center;gap:11px;width:calc(100% - var(--gut) * 2);margin:16px var(--gut) 0;
+  background:var(--surface);border:1px solid var(--line-2);border-radius:var(--r-m);padding:13px 15px;
+  transition:transform var(--t1) var(--e-out),background var(--t2);
+}
+.seasonbtn:active{transform:scale(.985);background:var(--surface-2)}
+.sb-k{font-family:var(--font-mono);font-size:8px;letter-spacing:.22em;text-transform:uppercase;color:var(--faint)}
+.seasonbtn b{font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.seasonbtn small{margin-left:auto;font-family:var(--font-mono);font-size:9px;color:var(--muted)}
+.seasonbtn svg{width:14px;height:14px;color:var(--faint);flex:0 0 auto}
+
+.ephead{display:flex;align-items:baseline;gap:10px;padding:28px var(--gut) 10px}
+.ep-n-count{margin-left:auto;font-family:var(--font-mono);font-size:9.5px;letter-spacing:.1em;color:var(--muted)}
+
+/* Episodes are a vertical list: it is the one screen you scan and tick, and a
+   horizontal carousel meant twenty-four swipes to reach episode 24. */
+.eplist{padding:0 var(--gut)}
+.epr{display:flex;align-items:center;gap:12px;padding:8px 0;position:relative;
+  transition:opacity var(--t2)}
+.epr+.epr{border-top:1px solid var(--line-2)}
+.ep-th{position:relative;flex:0 0 auto;width:118px;aspect-ratio:16/9;border-radius:var(--r-s);
+  overflow:hidden;background:var(--surface-2);transition:transform var(--t2) var(--e-out)}
+.epr:active .ep-th{transform:scale(.955)}
+.ep-th img{width:100%;height:100%;object-fit:cover;transition:filter var(--t3)}
+.ep-th::after{content:"";position:absolute;inset:0;border-radius:var(--r-s);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.06)}
+.ep-ph{position:absolute;inset:0;display:grid;place-items:center;font-family:var(--font-display);
+  font-size:24px;font-weight:800;color:rgba(255,255,255,.13)}
+.ep-play{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:30px;height:30px;
+  border-radius:99px;display:grid;place-items:center;background:rgba(244,244,247,.94);color:var(--accent-ink)}
+.ep-play svg{width:12px;height:12px;margin-left:1px}
+.ep-bar{position:absolute;left:0;right:0;bottom:0;height:3px;background:rgba(0,0,0,.6)}
+.ep-bar i{display:block;height:100%;background:var(--show,#fff)}
+.ep-tx{flex:1;min-width:0;display:block}
+.ep-n{display:block;font-family:var(--font-mono);font-size:7.5px;letter-spacing:.2em;
+  text-transform:uppercase;color:var(--faint);margin-bottom:3px}
+.ep-tx b{display:block;font-size:13px;font-weight:700;line-height:1.34;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+  transition:color var(--t2)}
+.ep-tx small{display:block;font-family:var(--font-mono);font-size:7.5px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--faint);margin-top:5px}
+.ep-tx small .db{color:var(--dub)}
+.ep-tx small .loc{color:var(--ok)}
+.tick{flex:0 0 auto;width:28px;height:28px;border-radius:99px;border:1.5px solid var(--line);
+  display:grid;place-items:center;color:transparent;
+  transition:background var(--t2),border-color var(--t2),transform var(--t1) var(--e-out)}
+.tick svg{width:12px;height:12px;transform:scale(.4);opacity:0;
+  transition:transform var(--t3) var(--e-pop),opacity var(--t1)}
+.tick:active{transform:scale(.85)}
+.epr.seen .tick{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.epr.seen .tick svg{transform:scale(1);opacity:1}
+.epr.seen .ep-th img{filter:grayscale(.55) brightness(.58)}
+.epr.seen .ep-tx b{color:var(--muted)}
+.epr.future{opacity:.42}
+.epr.pop .tick{animation:tickpop var(--t3) var(--e-pop)}
+@keyframes tickpop{0%{transform:scale(.8)}55%{transform:scale(1.16)}100%{transform:scale(1)}}
+.partdiv{display:flex;align-items:center;gap:11px;font-family:var(--font-mono);font-size:8px;
+  letter-spacing:.24em;text-transform:uppercase;color:var(--faint);padding:20px 0 8px}
+.partdiv::after{content:"";flex:1;height:1px;background:var(--line-2)}
+.ep-none{padding:26px 0;color:var(--faint);font-size:12.5px}
+.ep-load{display:flex;flex-direction:column;gap:14px;padding:8px 0}
+.ep-load i{display:block;height:66px;border-radius:var(--r-s);
+  background:linear-gradient(90deg,var(--surface) 25%,var(--surface-2) 50%,var(--surface) 75%);
+  background-size:220% 100%;animation:shimmer 1.3s linear infinite}
+@keyframes shimmer{to{background-position:-220% 0}}
+
+.nextup{margin:22px var(--gut) 0;border-top:1px solid var(--line-2)}
+.nu-row{display:flex;align-items:center;gap:10px;padding:13px 0;border-bottom:1px solid var(--line-2)}
+.nu-row:last-child{border-bottom:0}
+.nu-k{flex:0 0 auto;width:26px;height:26px;border-radius:99px;display:grid;place-items:center;
+  background:var(--accent-soft);color:var(--ink)}
+.nu-k svg{width:13px;height:13px}
+.nu-row.amber .nu-k{background:color-mix(in srgb,var(--dub) 20%,transparent);color:var(--dub)}
+.nu-row b{font-size:13.5px;font-weight:700;flex:0 0 auto}
+.nu-row.amber b{color:var(--dub)}
+.nu-in{font-family:var(--font-mono);font-size:8px;letter-spacing:.14em;color:var(--ink);
+  background:var(--accent-soft);border-radius:99px;padding:4px 9px;flex:0 0 auto}
+.nu-row small{flex:1;text-align:right;font-family:var(--font-mono);font-size:8px;
+  letter-spacing:.1em;text-transform:uppercase;color:var(--faint)}
+.nu-cal{display:flex;gap:6px;flex:0 0 auto}
+.dadj{width:27px;height:27px;border-radius:99px;border:1px solid var(--line);color:var(--ink);
+  font-size:14px;font-weight:700;display:grid;place-items:center;text-align:center;
+  transition:transform var(--t1) var(--e-out),background var(--t2)}
+.dadj:active{transform:scale(.86);background:var(--surface-2)}
+
+.syn{padding:20px var(--gut) 0}
+.syn p{color:var(--muted);font-size:13.5px;line-height:1.72}
+.syn.clamp p{display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+.more{margin-top:8px;font-family:var(--font-mono);font-size:8.5px;letter-spacing:.2em;
+  text-transform:uppercase;color:var(--muted)}
+.dchips{display:flex;gap:7px;overflow-x:auto;padding:18px var(--gut) 0;scrollbar-width:none}
+.dchips::-webkit-scrollbar{display:none}
+.dch{flex:0 0 auto;white-space:nowrap;font-family:var(--font-mono);font-size:8px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--ink);background:var(--surface-2);border:1px solid var(--line-2);
+  border-radius:7px;padding:7px 11px}
+.dch.tag{transition:transform var(--t1) var(--e-out)}
+.dch.tag:active{transform:scale(.94);background:var(--surface-3)}
+
+.dsec{margin:28px var(--gut) 0;padding-top:20px;border-top:1px solid var(--line-2)}
+.dsec .sec-t{margin-bottom:14px}
+.dsec .hrail{margin:0 calc(var(--gut) * -1);padding:0 var(--gut)}
+.woc{flex:0 0 auto;width:92px;min-width:0;scroll-snap-align:start}
+.woc:disabled{opacity:.4}
+.wop{display:block;position:relative;aspect-ratio:2/3;border-radius:var(--r-s);overflow:hidden;
+  background:var(--surface);transition:transform var(--t2) var(--e-out)}
+.woc:active .wop{transform:scale(.95)}
+.wop img{width:100%;height:100%;object-fit:cover}
+.woc.cur .wop{box-shadow:0 0 0 2px var(--accent)}
+.won{position:absolute;left:5px;top:5px;min-width:19px;height:19px;border-radius:6px;padding:0 5px;
+  display:grid;place-items:center;font-family:var(--font-mono);font-size:9px;font-weight:600;
+  background:rgba(8,8,10,.8);color:var(--ink);font-style:normal}
+.wod{position:absolute;right:5px;top:5px;width:19px;height:19px;border-radius:99px;display:grid;
+  place-items:center;background:rgba(8,8,10,.8);color:var(--ok);font-style:normal}
+.wod svg{width:10px;height:10px}
+.wodub{position:absolute;right:5px;bottom:5px;font-family:var(--font-mono);font-size:6.5px;
+  font-weight:600;letter-spacing:.1em;background:var(--dub);color:var(--dub-ink);
+  border-radius:5px;padding:2px 4px;font-style:normal}
+.woc b{display:block;font-size:10px;font-weight:600;line-height:1.3;color:var(--muted);margin-top:7px;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;height:2.6em}
+.woc small{display:block;font-family:var(--font-mono);font-size:7px;letter-spacing:.12em;
+  color:var(--faint);margin-top:2px;text-transform:uppercase}
+
+.factgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px 16px}
+.fx small{display:block;font-family:var(--font-mono);font-size:7.5px;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--faint)}
+.fx b{display:block;font-size:13px;font-weight:700;margin-top:4px;text-transform:capitalize}
+.langs{display:flex;flex-wrap:wrap;gap:7px;margin-top:16px}
+.lang{font-family:var(--font-mono);font-size:8px;letter-spacing:.14em;text-transform:uppercase;
+  border:1px solid var(--line);border-radius:7px;padding:6px 10px;color:var(--muted)}
+.lang.en{background:var(--dub);color:var(--dub-ink);border-color:var(--dub);font-weight:700}
+
+/* ═══════════ airing ═══════════ */
+.cal{padding:4px var(--gut) 0}
+.day{display:flex;align-items:baseline;gap:10px;padding:24px 0 10px;
+  font-family:var(--font-sans);font-size:15px;font-weight:800;letter-spacing:0}
+.day span{font-family:var(--font-mono);font-size:8.5px;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--faint);font-weight:400}
+.day.today b{color:var(--ink)}
+.day.today::after{content:"";width:7px;height:7px;border-radius:99px;background:var(--live);
+  box-shadow:0 0 12px var(--live)}
+.ct{display:flex;align-items:center;gap:13px;width:100%;padding:9px 0;
+  transition:opacity var(--t2)}
+.ct+.ct{border-top:1px solid var(--line-2)}
+.ct:active{opacity:.6}
+.ct img{width:44px;height:60px;object-fit:cover;border-radius:var(--r-s);flex:0 0 auto;background:var(--surface)}
+.cb{flex:1;min-width:0}
+.cb b{display:block;font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.line{display:flex;align-items:center;gap:6px;margin-top:6px;flex-wrap:wrap}
+.line>*{font-family:var(--font-mono);font-size:7.5px;letter-spacing:.12em;padding:3px 6px;border-radius:5px}
+.line .s{border:1px solid var(--line);color:var(--faint)}
+.line .dub{background:var(--dub);color:var(--dub-ink);font-weight:700}
+.line .sub{background:var(--accent-soft);color:var(--ink);font-weight:700}
+.when{flex:0 0 auto;text-align:right}
+.when b{display:block;font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--ink)}
+.when small{display:block;font-family:var(--font-mono);font-size:7px;letter-spacing:.14em;
+  color:var(--faint);margin-top:3px}
+
+/* ═══════════ search ═══════════ */
+.rlist{padding:6px var(--gut) 0}
+.rrow{display:flex;align-items:center;gap:13px;width:100%;padding:10px 0;transition:opacity var(--t2)}
+.rrow+.rrow{border-top:1px solid var(--line-2)}
+.rrow:active{opacity:.6}
+.rrow img{width:46px;height:64px;object-fit:cover;border-radius:var(--r-s);flex:0 0 auto;background:var(--surface)}
+.rb{flex:1;min-width:0}
+.rb b{display:block;font-size:13.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rb small{display:flex;align-items:center;flex-wrap:wrap;gap:0;font-family:var(--font-mono);
+  font-size:8px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);margin-top:6px}
+.rdub{display:inline-block;background:var(--dub);color:var(--dub-ink);font-family:var(--font-mono);
+  font-size:7px;font-weight:700;letter-spacing:.12em;border-radius:5px;padding:2.5px 6px;
+  margin-left:8px;vertical-align:2px}
+.rse{border:1px solid var(--line);border-radius:5px;padding:2.5px 6px;color:var(--muted);margin-left:8px}
+.rtag{flex:0 0 auto;width:34px;height:34px;border-radius:99px;display:grid;place-items:center;
+  background:var(--accent);color:var(--accent-ink);transition:transform var(--t1) var(--e-out)}
+.rtag svg{width:13px;height:13px}
+.rrow:active .rtag{transform:scale(.9)}
+.rtag.own{background:none;border:1px solid var(--line);color:var(--ok)}
+.rskel{display:flex;align-items:center;gap:13px;padding:10px 0}
+.rskel i,.rskel b,.rskel em{display:block;border-radius:6px;
+  background:linear-gradient(90deg,var(--surface) 25%,var(--surface-2) 50%,var(--surface) 75%);
+  background-size:220% 100%;animation:shimmer 1.3s linear infinite}
+.rskel i{width:46px;height:64px;border-radius:var(--r-s);flex:0 0 auto}
+.rskel span{flex:1}
+.rskel b{height:13px;width:62%}
+.rskel em{height:9px;width:38%;margin-top:9px}
+
+/* ═══════════ account ═══════════ */
+.acct{display:flex;align-items:center;gap:14px;padding:14px var(--gut) 4px}
+.avatar{width:48px;height:48px;border-radius:99px;display:grid;place-items:center;flex:0 0 auto;
+  background:var(--surface-3);font-family:var(--font-display);font-size:19px;font-weight:800}
+.acct-t{min-width:0}
+.acct-t b{display:block;font-size:14.5px;font-weight:700;word-break:break-all}
+.acct-t small{display:block;font-family:var(--font-mono);font-size:8px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--faint);margin-top:4px}
+.statrow{display:flex;gap:9px;padding:20px var(--gut) 0}
+.stat{flex:1;background:var(--surface);border:1px solid var(--line-2);border-radius:var(--r-m);padding:14px 12px}
+.stat b{display:block;font-family:var(--font-display);font-size:20px;font-weight:800;letter-spacing:-.02em}
+.stat small{display:block;font-family:var(--font-mono);font-size:7px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--faint);margin-top:5px}
+.srows{margin:22px var(--gut) 0;background:var(--surface);border:1px solid var(--line-2);
+  border-radius:var(--r-m);overflow:hidden}
+.srow{display:flex;align-items:center;gap:13px;width:100%;padding:15px 15px;
+  transition:background var(--t2)}
+.srow+.srow{border-top:1px solid var(--line-2)}
+.srow:active{background:var(--surface-2)}
+.si{flex:0 0 auto;width:22px;height:22px;display:grid;place-items:center;color:var(--muted)}
+.si svg{width:19px;height:19px}
+.srow b{flex:1;font-size:14px;font-weight:600}
+.srow>i{color:var(--faint);display:grid;place-items:center}
+.srow>i svg{width:14px;height:14px}
+.srow.danger b,.srow.danger .si{color:var(--danger)}
+.tgl{flex:0 0 auto;width:44px;height:26px;border-radius:99px;background:var(--surface-3);
+  border:1px solid var(--line);position:relative;transition:background var(--t2),border-color var(--t2)}
+.tgl i{position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:99px;background:var(--faint);
+  transition:transform var(--t3) var(--e-pop),background var(--t2)}
+.tgl.on{background:var(--accent);border-color:var(--accent)}
+.tgl.on i{transform:translateX(18px);background:var(--accent-ink)}
+.remote{display:flex;align-items:flex-start;gap:12px;margin:22px var(--gut) 0;padding:14px;
+  background:var(--surface);border:1px solid var(--line-2);border-radius:var(--r-m)}
+.remote .si{color:var(--faint);margin-top:1px}
+.remote.ok .si{color:var(--ok)}
+.remote.off .si{color:var(--dub)}
+.remote.none .si{color:var(--faint)}   /* no desktop is normal, not a warning */
+.remote b{display:block;font-size:13px;font-weight:700}
+.remote small{display:block;font-size:11.5px;color:var(--faint);margin-top:3px;line-height:1.5;word-break:break-all}
+.remote>span:nth-of-type(2){flex:1;min-width:0}
+.remote-retry{flex:none;align-self:center;padding:7px 13px;border-radius:999px;
+  border:1px solid var(--line-2);background:var(--surface-2);color:var(--ink);
+  font:inherit;font-size:11.5px;font-weight:700;letter-spacing:.02em}
+.remote-retry:active{transform:scale(.94)}
+.note{font-size:11.5px;color:var(--faint);line-height:1.7;margin:22px var(--gut) 0}
+.diag{margin:18px var(--gut) 0;background:var(--surface);border:1px solid var(--line-2);
+  border-radius:var(--r-m);overflow:hidden}
+.diag summary{padding:13px 15px;font-size:12.5px;font-weight:700;color:var(--muted);cursor:pointer}
+.diag summary::-webkit-details-marker{display:none}
+.diag-b{padding:2px 15px 14px}
+.diag-b p{display:flex;justify-content:space-between;gap:14px;padding:6px 0;
+  font-size:11.5px;border-top:1px solid var(--line)}
+.diag-b p b{color:var(--faint);font-weight:600;flex:none}
+.diag-b p span{color:var(--ink);text-align:right;word-break:break-all}
+.diag-h{margin-top:6px}
+.diag-e{display:block!important;color:var(--faint);font-size:11px;line-height:1.5;word-break:break-word}
+.diag .btn-line{width:100%;justify-content:center;margin-top:12px}
+
+/* ═══════════ sheets ═══════════ */
+.sheetwrap{position:fixed;inset:0;z-index:80;display:flex;align-items:flex-end;
+  background:rgba(4,4,6,0);transition:background var(--t3) var(--e-out)}
+.sheetwrap.on{background:rgba(4,4,6,calc(.62 * var(--sheet-p,1)))}
+.sheet{
+  width:100%;max-height:86dvh;overflow-y:auto;background:var(--bg-2);
+  border-radius:var(--r-xl) var(--r-xl) 0 0;border-top:1px solid var(--line);
+  padding-bottom:calc(var(--sab) + 10px);scrollbar-width:none;
+  transform:translate3d(0,101%,0);transition:transform var(--t4) var(--e-out);
+  will-change:transform;box-shadow:0 -20px 60px rgba(0,0,0,.5);
+}
+.sheet::-webkit-scrollbar{display:none}
+.sheetwrap.on .sheet{transform:translate3d(0,0,0)}
+.sheet.tall{min-height:34dvh}
+.grab{width:38px;height:4px;border-radius:3px;background:var(--line);margin:11px auto 4px}
+.sh-title{font-family:var(--font-mono);font-size:8.5px;letter-spacing:.26em;text-transform:uppercase;
+  color:var(--faint);padding:14px 20px 6px}
+.ss-row{display:flex;align-items:center;gap:13px;width:100%;padding:14px 20px;text-decoration:none;
+  color:inherit;transition:background var(--t2)}
+.ss-row+.ss-row{border-top:1px solid var(--line-2)}
+.ss-row:active{background:var(--surface)}
+.sst{flex:1;min-width:0}
+.sst b{display:block;font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sst small{display:block;font-family:var(--font-mono);font-size:8px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--faint);margin-top:4px}
+.sst small .db{color:var(--dub)}
+.ss-bar{display:block;height:2px;border-radius:2px;background:var(--line);margin-top:8px;overflow:hidden}
+.ss-bar i{display:block;height:100%;background:var(--muted)}
+.ss-row.on .sst b{color:#fff}
+.ss-row.on .ss-bar i{background:var(--accent)}
+.ss-row .ok{flex:0 0 auto;color:var(--ok);display:grid;place-items:center}
+.ss-row .ok.dim{color:var(--faint)}
+.ss-row .ok svg{width:15px;height:15px}
+.mmi{flex:0 0 auto;width:22px;height:22px;display:grid;place-items:center;color:var(--muted)}
+.mmi svg{width:19px;height:19px}
+.ss-row.danger .sst b,.ss-row.danger .mmi{color:var(--danger)}
+.ss-row.armed{background:var(--danger)}
+.ss-row.armed .sst b,.ss-row.armed .mmi{color:#fff}
+.sh-note{padding:0 20px 4px;color:var(--faint);font-size:11.5px;line-height:1.6}
+.keyf{display:block;padding:14px 20px 4px}
+.keyf-l{display:block;font-size:12px;font-weight:800;letter-spacing:.02em;margin-bottom:7px}
+.keyf input{width:100%;padding:12px 14px;border-radius:var(--r-s);
+  background:var(--bg-2);border:1px solid var(--line-2);color:var(--ink);
+  font:inherit;font-size:13px}
+.keyf input:focus{outline:none;border-color:var(--accent)}
+.keyf small{display:block;margin-top:7px;color:var(--faint);font-size:11px;line-height:1.55}
+.srow-v{margin-left:auto;color:var(--faint);font-size:11.5px}
+.sh-err{padding:26px 22px 8px;text-align:center}
+.sh-err-i{display:block;color:var(--dub);margin-bottom:10px}
+.sh-err-i svg{width:30px;height:30px}
+.sh-err b{display:block;font-size:15px;font-weight:800}
+.sh-err p{margin:7px 0 18px;color:var(--muted);font-size:12.5px;line-height:1.6;word-break:break-word}
+.sh-err .btn-solid{width:100%;justify-content:center}
+.sh-err .btn-line{width:100%;justify-content:center;margin-top:9px}
+.sh-load{height:180px;display:grid;place-items:center}
+.sh-load i{width:26px;height:26px;border-radius:99px;border:2px solid var(--line);
+  border-top-color:var(--ink);animation:rot .8s linear infinite}
+@keyframes rot{to{transform:rotate(360deg)}}
+.sheet.preview .grab{margin-bottom:0}
+.sh-hero{height:124px;overflow:hidden;background:var(--surface);margin-top:-15px}
+.sh-hero img{width:100%;height:100%;object-fit:cover;opacity:.65}
+.sh-body{display:flex;gap:14px;padding:0 20px;margin-top:-36px;position:relative}
+.sh-poster{width:90px;height:128px;object-fit:cover;border-radius:var(--r-m);flex:0 0 auto;
+  border:1px solid var(--line);background:var(--surface);box-shadow:0 14px 32px rgba(0,0,0,.55)}
+.sh-t{min-width:0;padding-top:44px}
+.sh-t b{display:block;font-family:var(--font-display);font-size:18px;font-weight:800;line-height:1.16}
+.sh-t small{display:flex;align-items:center;flex-wrap:wrap;font-family:var(--font-mono);font-size:8px;
+  letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-top:7px}
+.sh-t .gl{color:var(--faint)}
+.sh-syn{padding:16px 20px 0;color:var(--muted);font-size:12.5px;line-height:1.65}
+.sh-btns{display:flex;gap:10px;padding:18px 20px 0}
+.sh-btns .btn-solid{flex:1}
+.sh-btns .btn-line{flex:0 0 auto;width:auto;padding:13px 18px;text-decoration:none}
+
+/* ═══════════ filter modal ═══════════ */
+.fmodal{position:fixed;inset:0;z-index:85;background:var(--bg);display:flex;flex-direction:column;
+  opacity:0;transform:translate3d(0,16px,0);
+  transition:opacity var(--t2) var(--e-out),transform var(--t3) var(--e-out)}
+.fmodal.on{opacity:1;transform:none}
+.fm-head{flex:0 0 auto;display:flex;align-items:center;
+  padding:calc(var(--sat) + 18px) var(--gut) 14px;border-bottom:1px solid var(--line-2)}
+.fm-head b{font-family:var(--font-display);font-size:21px;font-weight:800;letter-spacing:-.02em}
+.fm-x{margin-left:auto;width:36px;height:36px;border-radius:99px;display:grid;place-items:center;
+  background:var(--surface);border:1px solid var(--line-2);transition:transform var(--t1)}
+.fm-x svg{width:13px;height:13px}
+.fm-x:active{transform:scale(.9)}
+.fm-body{flex:1;overflow-y:auto;padding:4px var(--gut) 16px;scrollbar-width:none}
+.fm-body::-webkit-scrollbar{display:none}
+.fm-body .mini-label{display:block;margin:22px 0 11px}
+.fm-grid{display:flex;flex-wrap:wrap;gap:8px}
+/* NO backdrop-filter and NO transitions here: ~190 live blur regions plus 190
+   running transitions is exactly what made this sheet crawl on device */
+.fm-grid .chip{transition:none;backdrop-filter:none}
+.fm-foot{flex:0 0 auto;display:flex;align-items:center;gap:10px;
+  padding:12px var(--gut) calc(var(--sab) + 14px);border-top:1px solid var(--line-2);background:var(--bg)}
+.fm-foot .btn-line{width:auto;padding:13px 22px}
+.fm-foot .btn-solid{flex:1}
+
+/* ═══════════ player ═══════════ */
+.playerwrap{position:fixed;inset:0;z-index:75;background:#000;display:flex;align-items:center;
+  animation:fadein var(--t3) var(--e-out)}
+@keyframes fadein{from{opacity:0}to{opacity:1}}
+.playerwrap video{width:100%;max-height:100%;outline:0;background:#000}
+.pl-top{position:absolute;top:0;left:0;right:0;z-index:2;display:flex;align-items:center;gap:12px;
+  padding:calc(var(--sat) + 12px) 16px 28px;
+  background:linear-gradient(180deg,rgba(0,0,0,.75),transparent);pointer-events:none}
+.pl-top>*{pointer-events:auto}
+.pl-t{flex:1;min-width:0;font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;text-shadow:0 1px 8px rgba(0,0,0,.85)}
+.pl-x{width:36px;height:36px;border-radius:99px;display:grid;place-items:center;flex:0 0 auto;
+  background:rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.24)}
+.pl-x svg{width:16px;height:16px;margin-left:-2px}
+.pl-cc{flex:0 0 auto;width:36px;height:36px;border-radius:99px;display:grid;place-items:center;
+  border:1px solid rgba(255,255,255,.35);color:#fff}
+.pl-cc svg{width:16px;height:16px}
+.pl-cc.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.pl-wait{position:absolute;inset:0;display:flex;flex-direction:column;gap:16px;align-items:center;
+  justify-content:center;font-family:var(--font-mono);font-size:8.5px;letter-spacing:.26em;
+  text-transform:uppercase;color:var(--muted);pointer-events:none}
+.pl-wait span{width:28px;height:28px;border-radius:99px;border:2px solid var(--line);
+  border-top-color:var(--ink);animation:rot .8s linear infinite}
+
+/* ═══════════ artwork lightbox ═══════════ */
+.artview{position:fixed;inset:0;z-index:95;background:rgba(3,3,5,.98);display:flex;
+  align-items:center;justify-content:center;opacity:0;transition:opacity var(--t3) var(--e-out)}
+.artview.on{opacity:1}
+.artview>img{max-width:100%;max-height:100%;object-fit:contain}
+.av-top{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;
+  padding:calc(var(--sat) + 14px) 16px 22px;background:linear-gradient(180deg,rgba(0,0,0,.65),transparent)}
+.av-n{font-family:var(--font-mono);font-size:9px;letter-spacing:.22em;color:var(--muted)}
+.av-x{margin-left:auto;width:36px;height:36px;border-radius:99px;display:grid;place-items:center;
+  background:rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.24)}
+.av-x svg{width:14px;height:14px}
+.av-zone{position:absolute;top:20%;bottom:20%;width:34%;display:flex;align-items:center;
+  color:rgba(255,255,255,.32);transition:color var(--t2)}
+.av-zone.l{left:0;justify-content:flex-start;padding-left:12px}
+.av-zone.r{right:0;justify-content:flex-end;padding-right:12px}
+.av-zone svg{width:22px;height:22px}
+.av-zone:active{color:#fff}
+
+/* ═══════════ poster → billboard morph ═══════════ */
+/* outer = clip frame (takes the non-uniform scale), inner = the artwork
+   (counter-scaled so it only ever scales uniformly — no stretch) */
+.morph{position:fixed;left:0;top:0;z-index:60;overflow:hidden;pointer-events:none;
+  transform-origin:0 0;border-radius:var(--r-m);
+  will-change:transform,opacity;box-shadow:0 18px 60px rgba(0,0,0,.6)}
+.morph img{width:100%;height:100%;object-fit:cover;object-position:50% 16%;
+  transform-origin:50% 50%;will-change:transform}
+.morph.fly,.morph.fly img{transition:transform var(--t4) var(--e-out)}
+.morph.fade{opacity:0;transition:opacity var(--t2) var(--e-in)}
+
+/* ═══════════ lock ═══════════ */
+.lockwrap{position:fixed;inset:0;z-index:120;background:var(--bg);display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:8px;padding:0 40px;
+  animation:fadein var(--t2);transition:opacity var(--t2)}
+.lockwrap.out{opacity:0}
+.lk-mark{width:52px;height:52px;border-radius:var(--r-m);display:grid;place-items:center;
+  background:var(--surface);color:var(--ink);margin-bottom:20px}
+.lk-mark svg{width:24px;height:24px}
+.mark{font-family:var(--font-mono);font-size:13px;letter-spacing:.4em}
+.mark i{font-style:normal;color:var(--faint)}
+.lk-sub{font-family:var(--font-mono);font-size:8.5px;letter-spacing:.34em;text-transform:uppercase;
+  color:var(--faint);margin-bottom:28px}
+.lk-btn{max-width:240px}
+.lk-out{margin-top:16px;font-family:var(--font-mono);font-size:8.5px;letter-spacing:.2em;
+  text-transform:uppercase;color:var(--faint)}
+
+/* ═══════════ auth ═══════════ */
+.auth{min-height:100%;display:flex;flex-direction:column;justify-content:center;
+  padding:40px 30px calc(var(--sab) + 40px)}
+.auth .mark{margin-bottom:8px}
+.auth h1{font-size:32px;line-height:1.1;margin-bottom:6px}
+.auth .lede{color:var(--muted);font-size:13.5px;line-height:1.6;margin-bottom:34px}
+.f-label{display:block;font-family:var(--font-mono);font-size:8.5px;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--muted);margin:0 0 8px 2px}
+.f-input{width:100%;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-m);
+  color:var(--ink);font-size:15px;padding:14px 16px;outline:0;margin-bottom:16px;
+  user-select:text;-webkit-user-select:text;transition:border-color var(--t2),background var(--t2)}
+.f-input:focus{border-color:var(--accent);background:var(--surface-2)}
+.auth .btn-line{margin-top:10px}
+.auth .hint{font-size:11.5px;color:var(--faint);margin-top:24px;line-height:1.65}
+
+/* ═══════════ one-shot entry ═══════════
+   Scoped to `.enter`, which buildScreen strips after 900ms. A patch can never
+   restart these, so content can never be stranded invisible. Containers
+   animate, not every card: one composited layer instead of two hundred. */
+.enter .heroc,.enter .pgtitle{animation:eIn var(--t4) var(--e-out) both}
+.enter .libbar{animation:eIn var(--t4) var(--e-out) both;animation-delay:40ms}
+.enter .grid,.enter .rlist,.enter .cal{animation:eUp 480ms var(--e-out) both;animation-delay:70ms}
+.enter .rail{animation:eUp 480ms var(--e-out) both;animation-delay:110ms}
+.enter .sechead{animation:eIn var(--t3) var(--e-out) both;animation-delay:60ms}
+.enter .art{animation:eIn var(--t3) var(--e-out) both}
+.enter .dhead,.enter .watchrow{animation:eUp var(--t4) var(--e-out) both;animation-delay:60ms}
+.enter .seasonbtn,.enter .ephead{animation:eUp var(--t4) var(--e-out) both;animation-delay:100ms}
+.enter .eplist{animation:eUp var(--t4) var(--e-out) both;animation-delay:140ms}
+.enter .acct,.enter .statrow,.enter .srows{animation:eUp var(--t4) var(--e-out) both;animation-delay:60ms}
+@keyframes eIn{from{opacity:0}to{opacity:1}}
+@keyframes eUp{from{opacity:0;transform:translate3d(0,14px,0)}to{opacity:1;transform:none}}
+
+/* ═══════════ reduced motion ═══════════ */
+@media (prefers-reduced-motion:reduce){
+  .enter *{animation:none!important}
+  .hero-art,.art-i,.hero-eye i{animation:none!important}
+  .m-screen,.m-screen.push,.m-screen.under,.sheet,.morph,.fmodal,.artview{transition-duration:.01ms!important}
+  .heroc,.art{transform:none!important}
+  *{scroll-behavior:auto!important}
+}
+
+
+/* ===== transition budget =====
+   While a screen is sliding, the tab bar's live blur is re-computed against
+   moving content every frame. Drop to a flat panel for the duration — it is
+   indistinguishable in motion and buys back a chunk of the frame. */
+/* (tab bar is solid now, nothing to drop during transitions) */
+
+/* Dim the outgoing screen with ONE small solid overlay rather than fading the
+   whole 200-poster screen: fading the screen itself forces the compositor to
+   promote and re-blend an enormous layer. */
+.scrim{
+  position:absolute;inset:0;z-index:1;background:#050507;
+  opacity:0;pointer-events:none;
+  transition:opacity var(--t4) var(--e-out);
+}
+.scrim.on{opacity:.45}
+.m-screen.push{z-index:2}
+
+/* the shelf grows in windows; this marks where the next one begins */
+.grid-more{
+  font-family:var(--font-mono);font-size:8.5px;letter-spacing:.2em;text-transform:uppercase;
+  color:var(--faint);text-align:center;padding:18px 0 4px;
+}
+
+/* zero-height marker for measuring where the sticky bar LIVES in layout —
+   the bar's own offsetTop lies once it is stuck */
+.bar-anchor{display:block;height:0;pointer-events:none}
+
+/* ===== identify from a screenshot ===== */
+.id-cta{
+  display:flex;align-items:center;gap:13px;width:calc(100% - var(--gut) * 2);
+  margin:4px var(--gut) 0;padding:14px 15px;border-radius:var(--r-m);
+  background:var(--surface);border:1px solid var(--line-2);
+  transition:transform var(--t1) var(--e-out),background var(--t2);
+}
+.id-cta:active{transform:scale(.985);background:var(--surface-2)}
+.id-cta-i{flex:0 0 auto;width:38px;height:38px;border-radius:var(--r-s);display:grid;place-items:center;
+  background:var(--surface-3);color:var(--ink)}
+.id-cta-i svg{width:19px;height:19px}
+.id-cta-t{flex:1;min-width:0}
+.id-cta-t b{display:block;font-size:14px;font-weight:700}
+.id-cta-t small{display:block;font-size:11.5px;color:var(--faint);margin-top:2px}
+.id-cta>svg{width:14px;height:14px;color:var(--faint);flex:0 0 auto}
+
+.idbox{margin:4px var(--gut) 0;padding:14px;border-radius:var(--r-m);
+  background:var(--surface);border:1px solid var(--line-2)}
+.id-head{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.id-head b{flex:1;font-size:14px;font-weight:700}
+.id-x{width:30px;height:30px;border-radius:99px;display:grid;place-items:center;
+  background:var(--surface-3);color:var(--muted)}
+.id-x svg{width:11px;height:11px}
+.id-shot{width:100%;max-height:180px;object-fit:contain;border-radius:var(--r-s);
+  background:var(--bg-2);margin-bottom:12px}
+.id-note{display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--faint);padding:6px 0 2px}
+.id-note.err{color:#F3C0B9}
+.id-spin{width:16px;height:16px;border-radius:99px;flex:0 0 auto;
+  border:2px solid var(--line);border-top-color:var(--ink);animation:rot .8s linear infinite}
+.id-warn{font-size:11.5px;line-height:1.5;color:var(--dub);background:color-mix(in srgb,var(--dub) 12%,transparent);
+  border:1px solid color-mix(in srgb,var(--dub) 30%,transparent);border-radius:9px;padding:9px 11px;margin-bottom:10px}
+.rlist.flush{padding:0}
+.rlist.flush .rrow:first-child{padding-top:4px}
+.id-conf{
+  flex:0 0 auto;font-family:var(--font-mono);font-size:10px;font-weight:700;
+  color:var(--ok);min-width:38px;text-align:right;
+}
+.id-conf.maybe{color:var(--dub)}
+.id-conf.unlikely{color:var(--faint)}
+.rrow:has(.id-conf.unlikely){opacity:.6}
+.id-quota{font-family:var(--font-mono);font-size:8.5px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--faint);margin-bottom:10px}
+.id-quota.low{color:var(--dub)}
+
+/* ── Airing: two segments, one question ────────────────────────────────── */
+.seg{display:flex;gap:6px;margin:0 var(--gut) 18px;padding:4px;border-radius:var(--r-full);
+  background:var(--surface);border:1px solid var(--line-2)}
+.seg-b{flex:1;padding:9px 12px;border-radius:var(--r-full);font-size:12.5px;font-weight:600;
+  color:var(--muted);transition:background .2s var(--e-out), color .2s var(--e-out)}
+.seg-b.on{background:var(--accent);color:#14120F}
+.seg-b i{font-style:normal;font-family:var(--mono);font-size:10px;opacity:.7;margin-left:3px}
+
+/* ── announcements ─────────────────────────────────────────────────────── */
+.annlist{display:flex;flex-direction:column;gap:8px;padding:0 var(--gut)}
+.annrow{display:grid;grid-template-columns:46px minmax(0,1fr) 26px;gap:13px;align-items:center;
+  padding:11px 13px;border-radius:var(--r-m);background:var(--surface);border:1px solid var(--line);
+  text-align:left;transition:background .16s}
+.annrow:active{transform:scale(.985)}
+.annrow img{width:46px;height:66px;object-fit:cover;border-radius:8px;border:1px solid var(--line-2)}
+.annb{min-width:0;display:flex;flex-direction:column;gap:4px}
+.annb b{font-size:13px;font-weight:650;line-height:1.32;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.annm{font-size:11px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.annd{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--whisper,#4a4a54)}
+.annd i{font-style:normal;color:var(--faint)}
+.annrow.firm .annd i{color:var(--ink)}
+.annrow.firm .annd{color:var(--accent)}
+.anna{display:grid;place-items:center;color:var(--faint)}
+.anna svg{width:17px;height:17px}
+.annrow.busy{opacity:.55;pointer-events:none}
+
+/* ── franchise sheet ───────────────────────────────────────────────────── */
+.ss-cov{width:40px;height:58px;object-fit:cover;border-radius:7px;flex:0 0 auto;border:1px solid var(--line-2)}
+.ss-row.on .ok{color:var(--ok)}
+.sh-adds{display:grid;grid-template-columns:1fr auto;gap:9px}
+.sh-adds .btn-line{white-space:nowrap}
+
+/* An invisible sheet must never be able to eat input. The wrap is a
+   full-screen fixed layer; if it is ever left behind without `.on` — a race,
+   a thrown render, an interrupted close — the app becomes unusable with
+   nothing on screen to explain why. Only the visible state is interactive. */
+.sheetwrap:not(.on){pointer-events:none}
+.sheetwrap.on{pointer-events:auto}

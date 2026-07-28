@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#101014">
+  <meta name="color-scheme" content="dark">
+  <title>Hikari</title>
+  <!-- Fonts are bundled (src/fonts.css). The app used to pull three families
+       from fonts.googleapis.com at boot, so a cold start on a phone painted in
+       system sans until the network answered — and offline it never did. -->
+
+  <!-- Boot screen, inlined so it paints on the FIRST frame: it must not wait
+       on the stylesheet or the JS bundle, which is the whole point. Cold start
+       has to restore a session, open IndexedDB and build the shelf before
+       anything appears, and until now that was a blank window. Removed by
+       main.js once the app (or the lock screen) is up. -->
+  <style>
+    html,body{margin:0;height:100%;background:#101014}
+    #boot{
+      position:fixed;inset:0;z-index:9999;
+      display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;
+      background:#101014;
+      transition:opacity .28s ease;
+    }
+    #boot.out{opacity:0;pointer-events:none}
+    #boot .ring{
+      width:34px;height:34px;border-radius:50%;
+      border:3px solid rgba(255,255,255,.10);
+      border-top-color:#E4A15D;
+      animation:bootspin .75s linear infinite;
+    }
+    #boot .mark{
+      font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace;
+      letter-spacing:.42em;text-indent:.42em;color:rgba(255,255,255,.34);
+    }
+    @keyframes bootspin{to{transform:rotate(360deg)}}
+    @media (prefers-reduced-motion:reduce){#boot .ring{animation-duration:2s}}
+  </style>
+</head>
+<body>
+  <div id="boot"><span class="ring"></span><span class="mark">HIKARI</span></div>
+  <div id="app"></div>
+  <div id="toasts"></div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

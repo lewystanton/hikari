@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>HIKARI — Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#101113; --pane:#151719; --pane2:#1A1D20; --line:rgba(255,255,255,.065);
+  --txt:#E7EAEE; --dim:#8C94A0; --faint:#5B626D; --amb:#E8A13C; --grn:#57C98B; --red:#E06C60;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden}
+body{font-family:'Inter',sans-serif;font-size:12.5px;background:var(--bg);color:var(--txt);
+  display:grid;grid-template-rows:34px 44px 1fr 26px}
+.mono{font-family:'JetBrains Mono',monospace}
+
+/* titlebar */
+.tbar{display:flex;align-items:center;background:#0B0C0E;border-bottom:1px solid var(--line);padding-left:12px;-webkit-app-region:drag;user-select:none}
+.tbar b{font-size:10.5px;letter-spacing:.28em;font-weight:600}
+.tbar .path{font-size:10px;color:var(--faint);margin-left:12px}
+.wbtns{margin-left:auto;display:flex;height:100%}
+.wb{width:44px;display:grid;place-items:center;color:var(--dim);font-size:11px}
+.wb:hover{background:rgba(255,255,255,.06)}
+.wb.x:hover{background:#D24B4B;color:#fff}
+
+/* toolbar */
+.tool{display:flex;align-items:center;gap:6px;padding:0 10px;background:var(--pane);border-bottom:1px solid var(--line)}
+.tbn{display:flex;align-items:center;gap:7px;padding:6px 12px;border-radius:6px;color:var(--dim);font-size:11.5px;cursor:pointer;border:1px solid transparent}
+.tbn:hover{background:rgba(255,255,255,.05);color:var(--txt)}
+.tbn.pri{background:rgba(232,161,60,.12);color:var(--amb);border-color:rgba(232,161,60,.3)}
+.tsep{width:1px;height:20px;background:var(--line);margin:0 6px}
+.tfind{margin-left:auto;display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--line);
+  border-radius:6px;padding:6px 11px;width:300px;color:var(--faint);font-size:11.5px}
+.tfind .mono{margin-left:auto;font-size:9px;background:rgba(255,255,255,.06);padding:2px 5px;border-radius:3px}
+
+/* 3-pane */
+.panes{display:grid;grid-template-columns:200px 1fr 302px;min-height:0}
+/* tree */
+.tree{background:#0D0E10;border-right:1px solid var(--line);overflow-y:auto;padding:10px 8px}
+.tg{font-size:9px;letter-spacing:.22em;color:var(--faint);padding:10px 8px 6px}
+.tn{display:flex;align-items:center;gap:8px;padding:5.5px 8px;border-radius:5px;color:var(--dim);cursor:pointer;font-size:12px}
+.tn:hover{background:rgba(255,255,255,.04)}
+.tn.on{background:rgba(232,161,60,.1);color:var(--amb)}
+.tn .n{margin-left:auto;font-size:10px;color:var(--faint)}
+.tn .cf{color:var(--faint);width:10px;font-size:9px}
+.tn.sub{padding-left:26px}
+
+/* list */
+.list{overflow-y:auto;min-width:0;background:var(--bg)}
+.list::-webkit-scrollbar{width:9px}
+.list::-webkit-scrollbar-thumb{background:#26292E;border-radius:8px;border:2px solid var(--bg)}
+.lh,.lr{display:grid;grid-template-columns:52px minmax(220px,2.4fr) 58px 54px 130px 64px 1.2fr 120px;gap:12px;align-items:center;padding:0 14px}
+.lh{position:sticky;top:0;z-index:2;background:var(--pane);border-bottom:1px solid var(--line);height:30px;
+  font-size:9.5px;letter-spacing:.14em;color:var(--faint);font-weight:500}
+.lh span{cursor:pointer}
+.lh span:hover{color:var(--txt)}
+.lh .s{color:var(--amb)}
+.lr{height:56px;border-bottom:1px solid rgba(255,255,255,.035);cursor:pointer}
+.lr:hover{background:rgba(255,255,255,.025)}
+.lr.sel{background:rgba(232,161,60,.07);box-shadow:inset 2px 0 0 var(--amb)}
+.lr img{width:34px;height:48px;object-fit:cover;border-radius:4px}
+.lr .t{min-width:0}
+.lr .t b{font-weight:600;font-size:12.5px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lr .t small{color:var(--faint);font-size:10.5px;margin-top:2px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lr .num{font-size:12px;color:var(--dim)}
+.lr .sc{color:var(--amb);font-weight:600;font-size:12px}
+.pcell{display:flex;align-items:center;gap:8px}
+.pcell .pb{flex:1;height:4px;border-radius:4px;background:rgba(255,255,255,.07);overflow:hidden}
+.pcell .pb i{display:block;height:100%;background:var(--grn)}
+.pcell .f{font-size:10px;color:var(--dim);min-width:34px;text-align:right}
+.badges{display:flex;gap:5px;flex-wrap:wrap}
+.bg{font-size:8.5px;font-weight:600;letter-spacing:.08em;padding:2.5px 6px;border-radius:4px;border:1px solid}
+.bg.dub{color:var(--amb);border-color:rgba(232,161,60,.4)}
+.bg.loc{color:var(--grn);border-color:rgba(87,201,139,.4)}
+.bg.fav{color:#E58AB6;border-color:rgba(229,138,182,.4)}
+.bg.air{color:#6FB6FF;border-color:rgba(111,182,255,.4)}
+.nextair{font-size:10.5px;color:var(--dim)}
+.nextair b{color:var(--grn);font-weight:600}
+.nextair b.now{color:var(--amb)}
+
+/* inspector */
+.insp{background:var(--pane);border-left:1px solid var(--line);overflow-y:auto;display:flex;flex-direction:column}
+.ihero{position:relative;height:120px;overflow:hidden}
+.ihero img{width:100%;height:100%;object-fit:cover;filter:brightness(.72)}
+.ihero::after{content:"";position:absolute;inset:0;background:linear-gradient(0deg,var(--pane),transparent 70%)}
+.ibody{padding:0 16px 16px;margin-top:-34px;position:relative}
+.irow1{display:flex;gap:12px;align-items:flex-end}
+.irow1 img{width:72px;border-radius:7px;border:2px solid var(--pane);box-shadow:0 8px 20px rgba(0,0,0,.5)}
+.irow1 .tt b{font-size:14px;font-weight:700;display:block;line-height:1.25}
+.irow1 .tt small{font-size:10px;color:var(--faint);letter-spacing:.14em}
+.ichips{display:flex;gap:5px;flex-wrap:wrap;margin:12px 0}
+.ic2{font-size:9.5px;font-weight:600;padding:3.5px 8px;border-radius:5px;background:rgba(255,255,255,.05);color:var(--dim)}
+.ic2.g{color:var(--grn);background:rgba(87,201,139,.1)}
+.ic2.a{color:var(--amb);background:rgba(232,161,60,.1)}
+.ikv{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-bottom:12px}
+.ikv div{background:var(--pane2);padding:8px 11px}
+.ikv .k{font-size:8.5px;letter-spacing:.18em;color:var(--faint);margin-bottom:3px}
+.ikv .v{font-size:11.5px;font-weight:600}
+.ikv .v.g{color:var(--grn)}
+.ikv .v.a{color:var(--amb)}
+.ibtn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:10px;border-radius:8px;
+  border:none;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;margin-bottom:7px}
+.ibtn.play{background:var(--amb);color:#241703}
+.ibtn.gh{background:rgba(255,255,255,.05);color:var(--txt);border:1px solid var(--line);font-weight:500}
+.isec{font-size:9px;letter-spacing:.22em;color:var(--faint);margin:14px 0 8px}
+.iep{display:flex;align-items:center;gap:9px;padding:6.5px 8px;border-radius:6px;font-size:11.5px;color:var(--dim)}
+.iep:hover{background:rgba(255,255,255,.04)}
+.iep .no{font-size:10px;color:var(--faint);width:24px}
+.iep .nm{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.iep .st{font-size:9px;letter-spacing:.1em}
+.iep.seen{color:var(--faint)}
+.iep.seen .st{color:var(--grn)}
+.iep.next{color:var(--txt);background:rgba(232,161,60,.07)}
+.iep.next .st{color:var(--amb)}
+.iep .dot{width:5px;height:5px;border-radius:50%;background:var(--grn)}
+
+/* statusbar */
+.sbar{display:flex;align-items:center;gap:14px;background:#0B0C0E;border-top:1px solid var(--line);
+  padding:0 12px;font-size:10px;color:var(--faint)}
+.sbar b{color:var(--dim);font-weight:500}
+.sbar .g{color:var(--grn)}
+.sbar .a{color:var(--amb)}
+.sbar .r{margin-left:auto;display:flex;gap:14px}
+.sbar .qp{width:90px;height:3px;border-radius:3px;background:rgba(255,255,255,.08);align-self:center;overflow:hidden}
+.sbar .qp i{display:block;height:100%;width:42%;background:var(--amb)}
+</style>
+</head>
+<body>
+<div class="tbar"><b>HIKARI</b><span class="path mono">studio · library / all</span>
+  <div class="wbtns"><div class="wb">—</div><div class="wb">▢</div><div class="wb x">✕</div></div></div>
+
+<div class="tool">
+  <div class="tbn pri">▶ Resume E6</div>
+  <div class="tsep"></div>
+  <div class="tbn">⇣ Import</div><div class="tbn">⛁ Scan disk</div><div class="tbn">✎ Organize</div><div class="tbn">↻ Refresh</div>
+  <div class="tsep"></div>
+  <div class="tbn">▦</div><div class="tbn" style="background:rgba(255,255,255,.06);color:var(--txt)">☰</div>
+  <div class="tfind">⌕ Filter 167 shows… <span class="mono">CTRL K</span></div>
+</div>
+
+<div class="panes">
+  <aside class="tree">
+    <div class="tg">LIBRARY</div>
+    <div class="tn on"><span class="cf">▾</span>All shows<span class="n" id="nAll"></span></div>
+    <div class="tn sub">Airing<span class="n" id="nAir"></span></div>
+    <div class="tn sub">Favourites<span class="n">4</span></div>
+    <div class="tn sub">Dubbed<span class="n" id="nDub"></span></div>
+    <div class="tn sub">Unwatched<span class="n">118</span></div>
+    <div class="tg">SOURCES</div>
+    <div class="tn"><span class="cf">·</span>Local files<span class="n">3</span></div>
+    <div class="tn"><span class="cf">·</span>HIDIVE<span class="n">41</span></div>
+    <div class="tn"><span class="cf">·</span>Crunchyroll<span class="n">98</span></div>
+    <div class="tg">GENRES</div>
+    <div class="tn"><span class="cf">·</span>Comedy<span class="n">74</span></div>
+    <div class="tn"><span class="cf">·</span>Romance<span class="n">61</span></div>
+    <div class="tn"><span class="cf">·</span>Action<span class="n">38</span></div>
+    <div class="tn"><span class="cf">·</span>Drama<span class="n">22</span></div>
+    <div class="tn"><span class="cf">+</span>14 more…</div>
+  </aside>
+
+  <div class="list">
+    <div class="lh"><span></span><span class="s">TITLE ↓</span><span>YEAR</span><span>SCORE</span><span>PROGRESS</span><span>EPS</span><span>TAGS</span><span>NEXT AIR</span></div>
+    <div id="rows"></div>
+  </div>
+
+  <aside class="insp">
+    <div class="ihero"><img id="iBan" alt=""></div>
+    <div class="ibody">
+      <div class="irow1"><img id="iPoster" alt=""><div class="tt"><b id="iTitle"></b><small id="iJp"></small></div></div>
+      <div class="ichips" id="iChips"></div>
+      <div class="ikv" id="iKv"></div>
+      <button class="ibtn play">▶ Play next — S2 E6</button>
+      <button class="ibtn gh">Episode list</button>
+      <div class="isec">EPISODES — SEASON 2</div>
+      <div id="iEps"></div>
+      <div class="isec">ACTIONS</div>
+      <button class="ibtn gh">✎ Organize local files</button>
+      <button class="ibtn gh">◫ Change artwork</button>
+    </div>
+  </aside>
+</div>
+
+<div class="sbar">
+  <span><b id="sbCount"></b> shows</span><span><b>2,869</b> episodes</span>
+  <span class="g">● scan idle</span>
+  <span class="a">⣷ converting Solo Leveling E07</span><span class="qp"><i></i></span><span class="mono">42%</span>
+  <div class="r"><span class="g">AniList OK</span><span class="g">AnimeSchedule OK</span><span class="mono" id="clk"></span></div>
+</div>
+
+<script src="data.js"></script>
+<script>
+const D=window.HIKARI_DATA,$=id=>document.getElementById(id);
+const days=['SUN','MON','TUE','WED','THU','FRI','SAT'];
+$('nAll').textContent=D.stats.shows;$('nAir').textContent=D.airing.length;
+$('nDub').textContent=D.grid.filter(s=>s.dub).length+'+';
+const airByTitle=Object.fromEntries(D.airing.map(a=>[a.title.toLowerCase(),a]));
+function nextAir(s){
+  const a=D.airing.find(x=>x.title.toLowerCase().startsWith(s.title.slice(0,18).toLowerCase()));
+  if(!a)return s.status==='RELEASING'?'<span class="nextair">—</span>':'<span class="nextair" style="color:var(--faint)">ended</span>';
+  if(a.at*1000<Date.now())return'<span class="nextair"><b class="now">E'+a.ep+' OUT NOW</b></span>';
+  const dt=new Date(a.at*1000);
+  return `<span class="nextair">E${a.ep} · <b>${days[dt.getDay()]} ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}</b></span>`;
+}
+const rows=[{...D.hero,sel:true,watched:5,episodes:24,local:12,fav:true},...D.grid];
+$('rows').innerHTML=rows.map((s,i)=>{
+ const p=s.watched?Math.min(100,Math.round(s.watched/(s.episodes||12)*100)):0;
+ return `<div class="lr ${s.sel?'sel':''}">
+  <img loading="lazy" src="${s.cover}">
+  <div class="t"><b>${s.title}</b><small>${s.native||s.genres.join(' · ')}</small></div>
+  <span class="num">${s.year}</span><span class="sc">${s.score||'—'}</span>
+  <div class="pcell"><div class="pb"><i style="width:${p}%"></i></div><span class="f mono">${s.watched||0}/${s.episodes||'?'}</span></div>
+  <span class="num">${s.episodes||'—'}</span>
+  <div class="badges">${s.status==='RELEASING'?'<span class="bg air">AIRING</span>':''}${s.dub?'<span class="bg dub">DUB</span>':''}${s.local?`<span class="bg loc">LOCAL ${s.local}</span>`:''}${s.fav?'<span class="bg fav">FAV</span>':''}</div>
+  ${nextAir(s)}
+ </div>`}).join('');
+/* inspector = JJK */
+$('iBan').src=D.hero.banner;$('iPoster').src=D.hero.cover;
+$('iTitle').textContent=D.hero.title;$('iJp').textContent=D.hero.native;
+$('iChips').innerHTML=`<span class="ic2 a">★ ${D.hero.score}</span><span class="ic2">${D.hero.format} · ${D.hero.year}</span>
+ <span class="ic2 g">FINISHED</span><span class="ic2 a">EN DUB</span>`+D.hero.genres.map(g=>`<span class="ic2">${g}</span>`).join('');
+$('iKv').innerHTML=[['STUDIO',D.hero.studio],['EPISODES','24 × 24m'],['WATCHED','<span class="g">5 of 24</span>'],['ON DISK','<span class="a">12 files</span>']]
+ .map(([k,v])=>`<div><div class="k">${k}</div><div class="v">${v}</div></div>`).join('');
+$('iEps').innerHTML=[
+ ['04','Fearsome Womb','seen','✓ WATCHED'],['05','Fearsome Womb, Part 2','seen','✓ WATCHED'],
+ ['06','After Rain','next','▶ NEXT · LOCAL'],['07','Assault','','LOCAL'],['08','Boredom','','—']
+].map(([n,t,cls,st])=>`<div class="iep ${cls}"><span class="no mono">E${n}</span><span class="nm">${t}</span><span class="st">${st}</span></div>`).join('');
+$('sbCount').textContent=D.stats.shows;
+const t=()=>{$('clk').textContent=new Date().toTimeString().slice(0,5)};t();setInterval(t,30e3);
+</script>
+</body>
+</html>

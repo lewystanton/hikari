@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>HIKARI — Theater</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;800&display=swap" rel="stylesheet">
+<style>
+:root{ --bg:#08090C; --txt:#F2F4F8; --dim:rgba(242,244,248,.62); --faint:rgba(242,244,248,.38); --line:rgba(255,255,255,.1) }
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden}
+body{font-family:'Manrope',sans-serif;background:var(--bg);color:var(--txt);display:grid;grid-template-rows:34px 1fr}
+
+/* titlebar — transparent over backdrop */
+.tbar{position:relative;z-index:40;display:flex;align-items:center;padding-left:12px;-webkit-app-region:drag;user-select:none}
+.tbar b{font-size:10.5px;letter-spacing:.28em;font-weight:800}
+.wbtns{margin-left:auto;display:flex;height:100%}
+.wb{width:44px;display:grid;place-items:center;color:var(--dim);font-size:11px}
+.wb:hover{background:rgba(255,255,255,.08)}
+.wb.x:hover{background:#D24B4B;color:#fff}
+
+/* full-bleed backdrop — fixed; rails scroll over it */
+.stage{position:relative;overflow-y:auto;overflow-x:hidden}
+.stage::-webkit-scrollbar{width:0}
+.bd{position:fixed;top:0;left:0;right:0;bottom:0;z-index:0}
+.bd img{width:100%;height:100%;object-fit:cover;object-position:center 20%;filter:saturate(1.05)}
+.bd::after{content:"";position:absolute;inset:0;
+  background:linear-gradient(0deg,var(--bg) 6%,rgba(8,9,12,.72) 34%,rgba(8,9,12,.25) 60%,rgba(8,9,12,.45)),
+             linear-gradient(90deg,rgba(8,9,12,.82),transparent 46%)}
+
+/* top tabs */
+.tabs{position:sticky;top:0;z-index:6;display:flex;align-items:center;gap:26px;padding:12px 40px;
+  background:linear-gradient(180deg,rgba(8,9,12,.78),rgba(8,9,12,0));backdrop-filter:blur(2px)}
+.tabs .logo{display:flex;align-items:center;gap:10px;margin-right:16px}
+.tabs .logo svg{width:20px;height:20px}
+.tab{font-size:14px;font-weight:600;color:var(--faint);cursor:pointer;padding:6px 2px;position:relative}
+.tab:hover{color:var(--dim)}
+.tab.on{color:var(--txt)}
+.tab.on::after{content:"";position:absolute;left:0;right:0;bottom:-2px;height:3px;border-radius:3px;background:var(--txt)}
+.tabs .r{margin-left:auto;display:flex;gap:18px;align-items:center;color:var(--dim);font-size:15px}
+.tabs .prof{width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#E5B567,#C73E2E);
+  display:grid;place-items:center;font-size:11px;font-weight:800;color:#171310}
+
+/* content stack — scrolls over the fixed backdrop */
+.stack{position:relative;z-index:4;display:flex;flex-direction:column;gap:24px;
+  padding-top:30vh;padding-bottom:34px}
+.info{padding:0 42px;max-width:760px}
+.klabel{display:flex;align-items:center;gap:10px;font-size:11px;letter-spacing:.26em;font-weight:600;color:var(--dim);margin-bottom:14px}
+.klabel .dot{width:7px;height:7px;border-radius:50%;background:#4ADE80;box-shadow:0 0 12px #4ADE80}
+.info h1{font-size:58px;font-weight:800;letter-spacing:-.02em;line-height:1;text-shadow:0 4px 30px rgba(0,0,0,.5)}
+.meta{display:flex;gap:9px;align-items:center;margin:16px 0 10px;font-size:12.5px;color:var(--dim);flex-wrap:wrap}
+.mchip{background:rgba(255,255,255,.09);backdrop-filter:blur(8px);padding:5px 11px;border-radius:7px;font-weight:600}
+.mchip.g{color:#4ADE80;background:rgba(74,222,128,.12)}
+.mchip.a{color:#E5B567;background:rgba(229,181,103,.12)}
+.desc{font-size:13.5px;line-height:1.6;color:var(--dim);max-width:560px;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.acts{display:flex;gap:11px;margin-top:20px;align-items:center}
+.big{display:inline-flex;align-items:center;gap:10px;font-family:inherit;font-size:14px;font-weight:800;
+  padding:14px 30px;border-radius:11px;border:none;cursor:pointer}
+.big.play{background:#fff;color:#0B0C10}
+.big.play:hover{transform:scale(1.03)}
+.big.sec{background:rgba(255,255,255,.12);backdrop-filter:blur(10px);color:var(--txt)}
+.round{width:46px;height:46px;border-radius:50%;background:rgba(255,255,255,.1);backdrop-filter:blur(10px);
+  display:grid;place-items:center;font-size:16px;color:var(--txt);cursor:pointer;border:1px solid var(--line)}
+.hint{margin-left:8px;font-size:11px;color:var(--faint)}
+
+/* rails */
+.rails{display:flex;flex-direction:column;gap:20px}
+.railrow{padding-left:42px}
+.rl{display:flex;align-items:baseline;gap:12px;margin-bottom:10px}
+.rl h3{font-size:13px;font-weight:800;letter-spacing:.04em}
+.rl span{font-size:11px;color:var(--faint)}
+.strip{display:flex;align-items:flex-start;gap:12px;overflow-x:auto;padding:6px 42px 6px 2px;scroll-padding-left:2px;
+  mask-image:linear-gradient(90deg,#000 94%,transparent)}
+.strip::-webkit-scrollbar{height:0}
+/* focus cards */
+.fc{flex:0 0 158px;min-width:0;width:158px;cursor:pointer;transition:transform .18s ease;position:relative}
+.fc img{width:100%;aspect-ratio:2/2.9;object-fit:cover;border-radius:10px;display:block;
+  box-shadow:0 10px 30px -12px rgba(0,0,0,.8)}
+.fc .nm{font-size:11px;font-weight:600;color:var(--dim);margin-top:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:0;transition:.18s}
+.fc:hover .nm,.fc.focus .nm{opacity:1}
+.fc.focus,.fc:hover{transform:scale(1.09);z-index:3}
+.fc.focus img,.fc:hover img{outline:3px solid #fff;outline-offset:2px}
+.fc .tag{position:absolute;top:8px;left:8px;font-size:9px;font-weight:800;letter-spacing:.1em;
+  background:rgba(8,9,12,.72);backdrop-filter:blur(6px);padding:4px 8px;border-radius:6px}
+.fc .tag.d{color:#E5B567}
+.fc .tag.l{color:#4ADE80}
+.fc .pr{position:absolute;left:6px;right:6px;bottom:6px;height:4px;border-radius:4px;background:rgba(0,0,0,.55);overflow:hidden}
+.fc .pr i{display:block;height:100%;background:#fff;border-radius:4px}
+/* wide continue cards */
+.wc{flex:0 0 280px;min-width:0;width:280px;position:relative;border-radius:12px;overflow:hidden;cursor:pointer;transition:transform .18s}
+.wc:hover{transform:scale(1.05);z-index:3}
+.wc:hover{outline:3px solid #fff;outline-offset:2px}
+.wc img{width:100%;height:150px;object-fit:cover;display:block}
+.wc::after{content:"";position:absolute;inset:0;background:linear-gradient(0deg,rgba(8,9,12,.85),transparent 60%)}
+.wc .in{position:absolute;left:13px;right:13px;bottom:11px;z-index:2}
+.wc h4{font-size:13px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wc .ep{font-size:10.5px;color:var(--dim);margin-top:3px}
+.wc .pr{height:3.5px;border-radius:4px;background:rgba(255,255,255,.22);margin-top:8px;overflow:hidden}
+.wc .pr i{display:block;height:100%;background:#fff}
+.wc .ply{position:absolute;top:12px;right:12px;z-index:2;width:34px;height:34px;border-radius:50%;
+  background:rgba(8,9,12,.55);backdrop-filter:blur(6px);display:grid;place-items:center;font-size:12px;opacity:0;transition:.15s}
+.wc:hover .ply{opacity:1}
+/* schedule chips */
+.sch{flex:0 0 auto;display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.07);backdrop-filter:blur(10px);
+  border:1px solid var(--line);border-radius:11px;padding:9px 14px 9px 9px;cursor:pointer}
+.sch:hover{background:rgba(255,255,255,.12)}
+.sch img{width:34px;height:46px;border-radius:7px;object-fit:cover}
+.sch .t{font-size:11px;font-weight:600;max-width:150px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sch .c{font-size:10px;color:var(--dim);margin-top:2px}
+.sch .c b{color:#4ADE80;font-weight:800}
+.sch .c b.dub{color:#E5B567}
+</style>
+</head>
+<body>
+<div class="tbar"><b>HIKARI</b><div class="wbtns"><div class="wb">—</div><div class="wb">▢</div><div class="wb x">✕</div></div></div>
+
+<div class="stage">
+  <div class="bd"><img id="bd" alt=""></div>
+
+  <div class="tabs">
+    <div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M3 7h18M5 7l1.2-3h11.6L19 7M7 7v13M17 7v13M4 20h16"/></svg></div>
+    <div class="tab on">Home</div><div class="tab">Library</div><div class="tab">Airing</div>
+    <div class="tab">Favourites</div><div class="tab">Local</div>
+    <div class="r"><span>⌕</span><span>🔔</span><div class="prof">L</div></div>
+  </div>
+
+  <div class="stack">
+    <div class="info">
+      <div class="klabel"><span class="dot"></span>AIRING · NEW DUB EPISODE SATURDAY</div>
+      <h1 id="t"></h1>
+      <div class="meta" id="meta"></div>
+      <p class="desc" id="desc"></p>
+      <div class="acts">
+        <button class="big play">▶ Resume · S2 E6</button>
+        <button class="big sec">Episodes</button>
+        <div class="round">♥</div><div class="round">✓</div>
+        <span class="hint">18 min left in E5</span>
+      </div>
+    </div>
+
+    <div class="rails">
+      <div class="railrow"><div class="rl"><h3>Continue watching</h3><span id="cwN"></span></div>
+        <div class="strip" id="cw"></div></div>
+      <div class="railrow"><div class="rl"><h3>This week</h3><span id="schN"></span></div>
+        <div class="strip" id="sch"></div></div>
+      <div class="railrow"><div class="rl"><h3>Your library</h3><span id="libN"></span></div>
+        <div class="strip" id="lib"></div></div>
+    </div>
+  </div>
+</div>
+
+<script src="data.js"></script>
+<script>
+const D=window.HIKARI_DATA,$=id=>document.getElementById(id);
+const days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+$('bd').src=D.hero.banner;
+$('t').textContent=D.hero.title;
+$('meta').innerHTML=`<span class="mchip g">98% match</span><span class="mchip a">★ ${D.hero.score}</span>
+ <span class="mchip">${D.hero.year}</span><span class="mchip">${D.hero.episodes} Episodes</span>
+ <span class="mchip">${D.hero.format}</span><span class="mchip a">EN DUB</span><span>${D.hero.genres.join(' · ')}</span>`;
+$('desc').textContent=D.hero.desc;
+$('cwN').textContent=D.cw.length+' shows';
+$('cw').innerHTML=D.cw.map(s=>`<div class="wc"><img src="${s.banner||s.cover}"><div class="ply">▶</div>
+ <div class="in"><h4>${s.title}</h4><div class="ep">E${s.watched+1} · ${s.episodes-s.watched} left</div>
+ <div class="pr"><i style="width:${Math.round(s.watched/s.episodes*100)}%"></i></div></div></div>`).join('');
+function cd(at){const s=at*1000-Date.now();if(s<=0)return'<b>OUT NOW</b>';
+ const d=Math.floor(s/86400e3),h=Math.floor(s%86400e3/3600e3);const dt=new Date(at*1000);
+ return `<b>${days[dt.getDay()]}</b> · ${d?d+'d ':''}${h}h`;}
+$('schN').textContent=D.airing.length+' new episodes';
+$('sch').innerHTML=D.airing.map(a=>`<div class="sch"><img src="${a.cover}"><div>
+ <div class="t">${a.title}</div><div class="c">E${a.ep} · ${cd(a.at)}${a.dub?' · <b class="dub">DUB</b>':''}</div></div></div>`).join('');
+$('libN').textContent=D.stats.shows+' shows';
+$('lib').innerHTML=D.grid.map((s,i)=>`<div class="fc ${i===0?'focus':''}">
+ <img loading="lazy" src="${s.cover}">
+ ${s.dub?'<span class="tag d">DUB</span>':''}${s.local?'<span class="tag l">LOCAL</span>':''}
+ ${s.watched?`<div class="pr"><i style="width:${Math.min(100,Math.round(s.watched/(s.episodes||12)*100))}%"></i></div>`:''}
+ <div class="nm">${s.title}</div></div>`).join('');
+</script>
+</body>
+</html>

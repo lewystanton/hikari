@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>HIKARI — Deck · Ember</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#121013; --pane:#191619; --pane2:#201C1F; --line:rgba(255,255,255,.06);
+  --txt:#EDE9E4; --dim:#9C948D; --faint:#655F5C; --gold:#E8B45A; --grn:#67C98F; --show:#E4A15D;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--txt);font-size:13px;
+  display:grid;grid-template-rows:34px 1fr 42px}
+.mono{font-family:'JetBrains Mono',monospace}
+.arc{font-family:'Archivo',sans-serif}
+
+.tbar{display:flex;align-items:center;background:#0C0A0C;border-bottom:1px solid var(--line);
+  padding-left:12px;-webkit-app-region:drag;user-select:none}
+.tbar .mark{width:14px;height:14px;margin-right:8px}
+.tbar b{font-size:10.5px;letter-spacing:.28em;font-weight:600}
+.tbar .ver{font-size:9px;color:var(--faint);margin-left:10px;letter-spacing:.1em}
+.wbtns{margin-left:auto;display:flex;height:100%}
+.wb{width:44px;display:grid;place-items:center;color:var(--dim);font-size:11px}
+.wb:hover{background:rgba(255,255,255,.06)}
+.wb.x:hover{background:#D24B4B;color:#fff}
+
+.app{display:grid;grid-template-columns:212px 1fr;min-height:0}
+.rail{background:#0E0C0E;border-right:1px solid var(--line);padding:14px 10px;overflow-y:auto}
+.grp{font-size:9px;letter-spacing:.24em;color:var(--faint);padding:14px 10px 7px}
+.ri{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;color:var(--dim);cursor:pointer;position:relative;margin-bottom:1px}
+.ri:hover{background:rgba(255,255,255,.04);color:var(--txt)}
+.ri.on{background:linear-gradient(90deg,rgba(232,180,90,.14),rgba(232,180,90,.04));color:var(--txt)}
+.ri.on::before{content:"";position:absolute;left:-10px;top:7px;bottom:7px;width:3px;border-radius:3px;background:var(--gold)}
+.ri .ic{width:16px;text-align:center;font-size:13px}
+.ri .n{margin-left:auto;font-size:10px;color:var(--faint);background:rgba(255,255,255,.05);padding:2px 7px;border-radius:8px}
+.ri.on .n{color:var(--gold);background:rgba(232,180,90,.12)}
+
+.main{display:flex;flex-direction:column;min-width:0;min-height:0}
+.topbar{display:flex;align-items:center;gap:10px;padding:10px 18px;border-bottom:1px solid var(--line)}
+.srch{display:flex;align-items:center;gap:8px;background:var(--pane);border:1px solid var(--line);
+  border-radius:9px;padding:7px 12px;color:var(--faint);width:270px;font-size:12px}
+.srch kbd{margin-left:auto;font-size:9px;background:rgba(255,255,255,.06);padding:2px 6px;border-radius:4px}
+.chips{display:flex;gap:6px;margin-left:6px}
+.chip{padding:6px 13px;border-radius:9px;font-size:11.5px;font-weight:500;color:var(--dim);cursor:pointer;border:1px solid transparent}
+.chip:hover{color:var(--txt)}
+.chip.on{background:rgba(232,180,90,.13);color:var(--gold);border-color:rgba(232,180,90,.35)}
+.tb-r{margin-left:auto;display:flex;gap:8px;color:var(--dim);font-size:11.5px}
+.sel{background:var(--pane);border:1px solid var(--line);border-radius:8px;padding:6px 11px}
+
+.scroll{overflow-y:auto;min-height:0;flex:1;position:relative}
+.scroll::-webkit-scrollbar{width:9px}
+.scroll::-webkit-scrollbar-thumb{background:#2E2830;border-radius:8px;border:2px solid var(--bg)}
+/* ambient show-color glow — the shader heritage */
+.amb{position:absolute;top:-80px;left:-10%;right:-10%;height:560px;pointer-events:none;
+  background:radial-gradient(56% 60% at 34% 20%, color-mix(in srgb, var(--show) 22%, transparent), transparent 70%);
+  filter:blur(6px)}
+
+/* ————— billboard: poster + text over blurred banner ————— */
+.bill{position:relative;margin:18px 22px 6px;border-radius:16px;overflow:hidden;border:1px solid var(--line)}
+.bill .bg{position:absolute;inset:0}
+.bill .bg img{width:100%;height:100%;object-fit:cover;filter:blur(22px) saturate(1.15) brightness(.5);transform:scale(1.15)}
+.bill .bg::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(18,16,19,.92),rgba(18,16,19,.55) 55%,rgba(18,16,19,.35))}
+.bill .in{position:relative;display:flex;gap:24px;padding:24px;align-items:center}
+.bill .poster{width:148px;border-radius:10px;box-shadow:0 18px 40px -14px rgba(0,0,0,.8);border:1px solid rgba(255,255,255,.12)}
+.bill .tx{min-width:0;flex:1}
+.bill .kick{font-size:10px;letter-spacing:.3em;color:var(--gold);font-weight:700;margin-bottom:8px}
+.bill h2{font-size:38px;font-weight:800;letter-spacing:-.01em;line-height:1;text-transform:uppercase}
+.bill .meta{display:flex;gap:14px;align-items:center;color:var(--dim);font-size:12px;margin:12px 0 10px;flex-wrap:wrap}
+.bill .meta b{color:var(--txt)}
+.bill .meta .jp{letter-spacing:.18em;color:var(--faint)}
+.bill p{font-size:12.5px;color:var(--dim);max-width:640px;line-height:1.6;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.bill .bact{display:flex;gap:10px;margin-top:16px}
+.pb{display:inline-flex;align-items:center;gap:9px;padding:11px 22px;border-radius:10px;font-size:12.5px;font-weight:700;cursor:pointer;border:none}
+.pb.go{background:var(--gold);color:#241A05}
+.pb.go:hover{filter:brightness(1.1)}
+.pb.gh{background:rgba(255,255,255,.07);color:var(--txt);border:1px solid rgba(255,255,255,.12)}
+.bill .side{flex:none;align-self:stretch;display:flex;flex-direction:column;justify-content:center;gap:8px;
+  border-left:1px solid rgba(255,255,255,.09);padding-left:22px;min-width:190px}
+.bill .side .k{font-size:9px;letter-spacing:.26em;color:var(--faint)}
+.bill .side .v{font-size:12.5px;font-weight:600}
+.bill .side .v.g{color:var(--gold)}
+
+/* rows */
+.row{padding:20px 22px 0}
+.rh{display:flex;align-items:baseline;gap:12px;margin-bottom:12px}
+.rh h3{font-family:'Archivo';font-size:15px;font-weight:700;letter-spacing:.02em}
+.rh .n{font-size:10.5px;color:var(--faint)}
+.rh .all{margin-left:auto;font-size:11px;color:var(--faint);cursor:pointer}
+.rh .all:hover{color:var(--gold)}
+.hs{display:flex;align-items:flex-start;gap:13px;overflow-x:auto;padding-bottom:14px;
+  mask-image:linear-gradient(90deg,#000 96%,transparent)}
+.hs::-webkit-scrollbar{height:0}
+/* continue: EP plate cards */
+.cc{flex:0 0 300px;min-width:0;width:300px;display:flex;background:var(--pane);border:1px solid var(--line);
+  border-radius:12px;overflow:hidden;cursor:pointer}
+.cc:hover{border-color:rgba(232,180,90,.4)}
+.cc .plate{flex:0 0 64px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+  background:rgba(232,180,90,.08);border-right:1px solid var(--line)}
+.cc .plate b{font-family:'JetBrains Mono';font-size:17px;color:var(--gold)}
+.cc .plate span{font-size:8px;letter-spacing:.2em;color:var(--faint)}
+.cc .im{position:relative;flex:1;min-width:0}
+.cc img{width:100%;height:100%;min-height:96px;object-fit:cover;display:block;filter:saturate(.98)}
+.cc .ov{position:absolute;inset:0;background:linear-gradient(0deg,rgba(12,10,12,.85),transparent 55%)}
+.cc .t{position:absolute;left:11px;right:11px;bottom:8px}
+.cc .t b{font-size:12px;font-weight:600;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cc .t small{font-size:10px;color:var(--dim)}
+.cc .pr{position:absolute;left:0;right:0;bottom:0;height:3px;background:rgba(255,255,255,.12)}
+.cc .pr i{display:block;height:100%;background:var(--gold)}
+/* airing tiles */
+.at{flex:0 0 224px;min-width:0;width:224px;display:flex;gap:11px;background:var(--pane);border:1px solid var(--line);
+  border-radius:12px;padding:10px;cursor:pointer;align-items:center}
+.at:hover{border-color:rgba(232,180,90,.4)}
+.at img{width:40px;height:56px;object-fit:cover;border-radius:7px}
+.at .tt{font-size:11.5px;font-weight:500;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.at .cd{font-size:10px;margin-top:4px;color:var(--dim)}
+.at .cd b{color:var(--grn);font-weight:600}
+.at .cd b.now{color:var(--gold)}
+.at .cd .dub{color:var(--gold);margin-left:6px;font-size:9px}
+
+/* grid */
+.gridwrap{padding:8px 22px 26px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:18px 14px}
+.pc{cursor:pointer}
+.pc .im{position:relative;border-radius:11px;overflow:hidden;border:1px solid var(--line);transition:.18s}
+.pc:hover .im{transform:translateY(-4px);box-shadow:0 0 0 1.5px var(--gold),0 18px 34px -16px rgba(232,180,90,.35)}
+.pc img{width:100%;aspect-ratio:2/2.9;object-fit:cover;display:block}
+.pc .sc{position:absolute;top:8px;left:8px;font-size:9.5px;font-weight:600;background:rgba(14,12,14,.75);
+  padding:3px 7px;border-radius:6px;color:var(--gold)}
+.pc .bdg{position:absolute;top:8px;right:8px;display:flex;flex-direction:column;gap:4px;align-items:flex-end}
+.bdg i{font-style:normal;font-size:8px;font-weight:700;letter-spacing:.1em;padding:3px 6px;border-radius:5px}
+.bdg .dub{background:rgba(232,180,90,.16);color:var(--gold);border:1px solid rgba(232,180,90,.4)}
+.bdg .loc{background:rgba(103,201,143,.14);color:var(--grn);border:1px solid rgba(103,201,143,.4)}
+.bdg .fav{background:rgba(255,255,255,.14);color:#fff}
+.pc .pr{position:absolute;left:0;right:0;bottom:0;height:3px;background:rgba(0,0,0,.5)}
+.pc .pr i{display:block;height:100%;background:var(--gold)}
+.pc .t{font-size:11.5px;font-weight:500;margin-top:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pc .m{font-size:10px;color:var(--faint);margin-top:2px}
+
+.qbar{display:flex;align-items:center;gap:16px;background:#0C0A0C;border-top:1px solid var(--line);padding:0 16px;font-size:11px;color:var(--dim)}
+.qbar .spin{width:12px;height:12px;border:2px solid rgba(232,180,90,.25);border-top-color:var(--gold);border-radius:50%;animation:sp 1s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.qbar .qp{width:130px;height:4px;background:rgba(255,255,255,.08);border-radius:4px;overflow:hidden}
+.qbar .qp i{display:block;height:100%;width:42%;background:var(--gold)}
+.qbar b{color:var(--txt);font-weight:500}
+.qbar .sep{width:1px;height:16px;background:var(--line)}
+.qbar .right{margin-left:auto;display:flex;gap:14px}
+.qbar .ok{color:var(--grn)}
+</style>
+</head>
+<body>
+  <div class="tbar">
+    <svg class="mark" viewBox="0 0 24 24" fill="none" stroke="#E8B45A" stroke-width="2"><path d="M3 7h18M5 7l1.2-3h11.6L19 7M7 7v13M17 7v13M4 20h16"/></svg>
+    <b>HIKARI</b><span class="ver mono">v2.0 — DECK · EMBER</span>
+    <div class="wbtns"><div class="wb">—</div><div class="wb">▢</div><div class="wb x">✕</div></div>
+  </div>
+
+  <div class="app">
+    <aside class="rail">
+      <div class="grp">LIBRARY</div>
+      <div class="ri on"><span class="ic">▦</span>All Shows<span class="n" id="nAll"></span></div>
+      <div class="ri"><span class="ic">◉</span>Airing<span class="n" id="nAir"></span></div>
+      <div class="ri"><span class="ic">♥</span>Favourites<span class="n">4</span></div>
+      <div class="ri"><span class="ic">◭</span>Dubbed<span class="n" id="nDub"></span></div>
+      <div class="ri"><span class="ic">◫</span>Unwatched</div>
+      <div class="grp">SOURCES</div>
+      <div class="ri"><span class="ic">⛁</span>Local files<span class="n">3</span></div>
+      <div class="ri"><span class="ic">◈</span>HIDIVE</div>
+      <div class="ri"><span class="ic">◈</span>Crunchyroll</div>
+      <div class="grp">MANAGE</div>
+      <div class="ri"><span class="ic">⇣</span>Import</div>
+      <div class="ri"><span class="ic">✎</span>Organize</div>
+      <div class="ri"><span class="ic">⚙</span>Settings</div>
+    </aside>
+
+    <div class="main">
+      <div class="topbar">
+        <div class="srch">⌕ Search library… <kbd>Ctrl K</kbd></div>
+        <div class="chips">
+          <div class="chip on">All</div><div class="chip">2026</div><div class="chip">Dubbed</div>
+          <div class="chip">Local</div><div class="chip">Comedy</div>
+        </div>
+        <div class="tb-r"><div class="sel">Sort: Airdate ↓</div><div class="sel">▦ Grid</div></div>
+      </div>
+
+      <div class="scroll">
+        <div class="amb"></div>
+
+        <div class="bill">
+          <div class="bg"><img id="bBg" alt=""></div>
+          <div class="in">
+            <img class="poster" id="bPoster" alt="">
+            <div class="tx">
+              <div class="kick">CONTINUE WATCHING · SEASON 2</div>
+              <h2 class="arc" id="bTitle"></h2>
+              <div class="meta" id="bMeta"></div>
+              <p id="bDesc"></p>
+              <div class="bact">
+                <button class="pb go">▶ Resume E6 · 18m left in E5</button>
+                <button class="pb gh">Episodes</button>
+                <button class="pb gh">♥</button>
+              </div>
+            </div>
+            <div class="side">
+              <div><div class="k">NEXT DUB</div><div class="v g">EP 21 — SAT 15:00</div></div>
+              <div><div class="k">ON DISK</div><div class="v">12 files · 8.1 GB</div></div>
+              <div><div class="k">STUDIO</div><div class="v" id="bStudio"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="rh"><h3>Continue Watching</h3><span class="n" id="cwN"></span><span class="all">See all →</span></div>
+          <div class="hs" id="cw"></div>
+        </div>
+
+        <div class="row">
+          <div class="rh"><h3>On Air This Week</h3><span class="n" id="airN"></span><span class="all">Calendar →</span></div>
+          <div class="hs" id="air"></div>
+        </div>
+
+        <div class="row"><div class="rh"><h3>Library</h3><span class="n" id="libN"></span></div></div>
+        <div class="gridwrap"><div class="grid" id="grid"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="qbar">
+    <div class="spin"></div>
+    <span>Converting <b>Solo Leveling — E07</b></span>
+    <div class="qp"><i></i></div><span class="mono">42%</span>
+    <span>· 3 queued</span>
+    <div class="sep"></div>
+    <span>Cache <b>4.2 GB</b> / 10 GB</span>
+    <div class="right"><span class="ok">● AniList</span><span class="ok">● AnimeSchedule</span><span class="mono" id="clock"></span></div>
+  </div>
+
+<script src="data.js"></script>
+<script>
+const D=window.HIKARI_DATA,$=id=>document.getElementById(id);
+document.documentElement.style.setProperty('--show',D.hero.color||'#E4A15D');
+const days=['SUN','MON','TUE','WED','THU','FRI','SAT'];
+function cd(at){const s=at*1000-Date.now();if(s<=0)return'<b class="now">OUT NOW</b>';
+ const d=Math.floor(s/86400e3),h=Math.floor(s%86400e3/3600e3);const dt=new Date(at*1000);
+ return `<b>${days[dt.getDay()]} ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}</b> · ${d?d+'d ':''}${h}h`;}
+$('nAll').textContent=D.stats.shows;$('nAir').textContent=D.airing.length;
+$('nDub').textContent=D.grid.filter(s=>s.dub).length+'+';
+$('bBg').src=D.hero.banner;$('bPoster').src=D.hero.cover;
+$('bTitle').textContent=D.hero.title;$('bStudio').textContent=D.hero.studio;
+$('bMeta').innerHTML=`<span style="color:var(--gold);font-weight:700">★ ${D.hero.score}</span><b>${D.hero.format} · ${D.hero.year}</b><span>${D.hero.episodes} eps</span><span class="jp">${D.hero.native}</span><span style="color:var(--gold)">EN DUB</span>`;
+$('bDesc').textContent=D.hero.desc;
+$('cwN').textContent=D.cw.length+' shows';
+$('cw').innerHTML=D.cw.map(s=>`<div class="cc">
+ <div class="plate"><b>E${s.watched+1}</b><span>NEXT</span></div>
+ <div class="im"><img src="${s.banner||s.cover}"><div class="ov"></div>
+ <div class="t"><b>${s.title}</b><small>${s.episodes-s.watched} episodes left</small></div>
+ <div class="pr"><i style="width:${Math.round(s.watched/s.episodes*100)}%"></i></div></div></div>`).join('');
+$('airN').textContent=D.airing.length+' broadcasts';
+$('air').innerHTML=D.airing.map(a=>`<div class="at"><img src="${a.cover}"><div>
+ <div class="tt">${a.title}</div><div class="cd">EP ${a.ep} · ${cd(a.at)}${a.dub?'<span class="dub">DUB</span>':''}</div></div></div>`).join('');
+$('libN').textContent=D.stats.shows+' shows · sorted by airdate';
+$('grid').innerHTML=D.grid.map(s=>`<div class="pc"><div class="im">
+ <img loading="lazy" src="${s.cover}">
+ <span class="sc">★ ${s.score||'—'}</span>
+ <span class="bdg">${s.fav?'<i class="fav">♥</i>':''}${s.dub?'<i class="dub">DUB</i>':''}${s.local?`<i class="loc">LOCAL ${s.local}</i>`:''}</span>
+ ${s.watched?`<div class="pr"><i style="width:${Math.min(100,Math.round(s.watched/(s.episodes||12)*100))}%"></i></div>`:''}
+ </div><div class="t">${s.title}</div><div class="m">${s.year} · ${s.format}</div></div>`).join('');
+const tick=()=>{$('clock').textContent=new Date().toTimeString().slice(0,5)};tick();setInterval(tick,30e3);
+</script>
+</body>
+</html>

@@ -1,0 +1,41 @@
+# ── never commit, never copy between machines ─────────────────────────────
+# These are all rebuilt by `npm install` / a build, and several contain
+# PLATFORM-SPECIFIC binaries — ffmpeg-static, ffprobe-static, sharp and
+# electron all ship different files on macOS than on Windows. Copying them
+# across is worse than not having them: you get a tree that looks complete and
+# fails at runtime.
+node_modules/
+mobile/node_modules/
+
+# build output
+dist/
+mobile/dist/
+mobile/android/app/build/
+mobile/android/build/
+mobile/android/.gradle/
+mobile/android/local.properties
+mobile/android/app/release/
+mobile/ios/App/Pods/
+mobile/ios/App/build/
+
+# ── secrets ────────────────────────────────────────────────────────────────
+# Supabase keys and any API keys live outside the repo.
+.env
+.env.*
+!.env.example
+.supabase/
+
+# ── local noise ────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.log
+npm-debug.log*
+.vscode/
+.idea/
+
+# scratch/probe scripts this project generates while testing
+.drive-*.mjs
+.look.mjs
+.smoke.mjs
+.verify.mjs
+.v.mjs

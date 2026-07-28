@@ -1,0 +1,455 @@
+/* ————————————————————————————————————————————————————————————————
+   HIKARI SYNC — Supabase account sync (library + settings)
+   Loads after app.js. Everything is a no-op until the user signs in.
+
+   Model: one cloud row per library record, keyed (user_id, media_id).
+   Push  = hash-diff against last-known cloud state, debounced 4s after
+           any persist(). Deletes propagate (row removed remotely).
+   Pull  = manifest diff (media_id + updated_at only), then fetch just
+           the changed rows. Merge is remote-wins EXCEPT: watched lists
+           union (a sync can never un-tick an episode), and device-local
+           fields (local file maps, resume positions) are preserved.
+   Live  = realtime postgres_changes on the user's rows; other devices'
+           edits apply within a second or two.
+   ———————————————————————————————————————————————————————————————— */
+(() => {
+  const CFG = window.HIKARI_SYNC;
+  if (!CFG || !window.supabase) {
+    window.syncUI = { fill() {
+      const so = document.getElementById('syncSignedOut');
+      if (so) so.innerHTML = '<p class="set-hint">Sync is not configured in this build.</p>';
+    } };
+    return;
+  }
+
+  const supa = window.supabase.createClient(CFG.url, CFG.anonKey, {
+    auth: { persistSession: true, autoRefreshToken: true }
+  });
+
+  /* —— state ———————————————————————————————————— */
+  let user = null;              // supabase user object
+  let meta = {};                // mediaId -> { h: contentHash, t: updated_at } (last known cloud state)
+  let applying = false;         // true while writing remote changes into `library`
+  let pushTimer = null;
+  let pullTimer = null;
+  let channel = null;
+  let busy = false;
+  let online = true;            // false after a failed push/pull until the next success
+  let renderTimer = null;
+
+  const K = (s) => `hikariSync.${s}.${user?.id || 'anon'}`;
+  const loadMeta = () => { try { meta = JSON.parse(localStorage.getItem(K('meta'))) || {}; } catch { meta = {}; } };
+  const saveMeta = () => { try { localStorage.setItem(K('meta'), JSON.stringify(meta)); } catch {} };
+  const lastSyncAt = () => Number(localStorage.getItem(K('last')) || 0);
+  const stampSync = () => { localStorage.setItem(K('last'), String(Date.now())); syncPill(); };
+
+  /* —— hashing / record shaping ————————————————— */
+  function hash(s) {
+    let h = 5381;
+    for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
+    return h.toString(36) + ':' + s.length;
+  }
+  /* jsonb does not preserve key order, so hashes must be order-independent —
+     otherwise every realtime echo of our own push looks like a foreign change */
+  function stableStringify(v) {
+    if (v === null || typeof v !== 'object') return JSON.stringify(v);
+    if (Array.isArray(v)) return '[' + v.map(stableStringify).join(',') + ']';
+    return '{' + Object.keys(v).sort().map((k) =>
+      v[k] === undefined ? '' : JSON.stringify(k) + ':' + stableStringify(v[k]))
+      .filter(Boolean).join(',') + '}';
+  }
+  /* what goes to the cloud: everything except device-local file paths */
+  function cloudRecord(r) {
+    const { local, ...rest } = r;
+    return rest;
+  }
+  const recHash = (r) => hash(stableStringify(cloudRecord(r)));
+
+  /* settings that sync (media folder paths are per-device) */
+  function cloudSettings() {
+    const { mediaRoots, ...rest } = appSettings || {};
+    return rest;
+  }
+
+  /* —— merge: remote row -> local library ————————— */
+  function unionWatched(a = {}, b = {}) {
+    const out = {};
+    for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) {
+      out[k] = [...new Set([...(a[k] || []), ...(b[k] || [])])].sort((x, y) => x - y);
+    }
+    return out;
+  }
+  /* returns true if the local library actually changed */
+  function applyRemoteRecord(mediaId, remote, updatedAt) {
+    const idx = library.findIndex((r) => r.id === mediaId);
+    const incoming = { ...remote };
+    if (idx >= 0) {
+      const cur = library[idx];
+      if (recHash(cur) === recHash(incoming)) {
+        meta[mediaId] = { h: recHash(cur), t: updatedAt };
+        return false;
+      }
+      incoming.watched = unionWatched(cur.watched, incoming.watched);
+      if (cur.local) incoming.local = cur.local;                     // device-local files stay
+      incoming.playPos = { ...(incoming.playPos || {}), ...(cur.playPos || {}) };
+      library[idx] = incoming;
+    } else {
+      library.push(incoming);
+    }
+    meta[mediaId] = { h: recHash(incoming), t: updatedAt };
+    queueLiteEnrich(incoming);
+    return true;
+  }
+
+  /* —— finish mobile adds ———————————————————————
+     Phone adds are AniList-lite (epv 0, no franchise map). This machine
+     owns the full pipeline, so the moment a lite record arrives — realtime
+     or pull — enrich it here and push the finished version back. */
+  const liteQueue = new Set();
+  let liteRunning = false;
+  const isLite = (r) => r && ((r.epv || 0) < 1 || !('franchise' in r));
+  function queueLiteEnrich(rec) {
+    if (!isLite(rec)) return;
+    liteQueue.add(rec.id);
+    clearTimeout(queueLiteEnrich._t);
+    queueLiteEnrich._t = setTimeout(runLiteEnrich, 3000);
+  }
+  async function runLiteEnrich() {
+    if (liteRunning || !user) return;
+    liteRunning = true;
+    try {
+      for (const id of [...liteQueue]) {
+        liteQueue.delete(id);
+        const rec = library.find((r) => r.id === id);
+        if (!isLite(rec)) continue;                  // finished meanwhile
+        try {
+          const fresh = await refreshRoot(rec);      // full pipeline + carry + persist(→push)
+          toast(`${fresh.title} — seasons & episodes filled in`);
+          const active = document.querySelector('.screen.active')?.id;
+          if (active === 'screen-shelf') renderShelf();
+          else if (active === 'screen-detail' && detailId === id) renderDetail();
+          updateChrome();
+        } catch (e) {
+          console.warn('[sync] lite enrich failed for', id, e.message || e);
+        }
+      }
+    } finally {
+      liteRunning = false;
+      if (liteQueue.size) setTimeout(runLiteEnrich, 5000);
+    }
+  }
+  function scanLiteRecords() {
+    for (const r of library) queueLiteEnrich(r);
+  }
+  function applyRemoteDelete(mediaId) {
+    const idx = library.findIndex((r) => r.id === mediaId);
+    delete meta[mediaId];
+    if (idx < 0) return false;
+    library.splice(idx, 1);
+    return true;
+  }
+  function afterApply(changed) {
+    if (!changed) { saveMeta(); return; }
+    applying = true;
+    try { persist(); } finally { applying = false; }
+    saveMeta();
+    clearTimeout(renderTimer);
+    renderTimer = setTimeout(() => {
+      const active = document.querySelector('.screen.active')?.id;
+      if (active === 'screen-shelf') renderShelf();
+      else if (active === 'screen-detail' && detailId != null &&
+               library.some((r) => r.id === detailId)) renderDetail();
+      else if (active === 'screen-detail' && detailId != null &&
+               !library.some((r) => r.id === detailId)) location.hash = '', renderShelf();
+      updateChrome();
+    }, 350);
+  }
+
+  /* —— push ———————————————————————————————————— */
+  function schedulePush() {
+    if (!user || applying) return;
+    clearTimeout(pushTimer);
+    pushTimer = setTimeout(() => pushChanges().catch(() => {}), 4000);
+    syncPill('pending');
+  }
+
+  async function pushChanges() {
+    if (!user || busy) return;
+    busy = true; syncPill('busy');
+    try {
+      const now = new Date().toISOString();
+      const seen = new Set();
+      const ups = [];
+      for (const r of library) {
+        const id = Number(r.id);
+        if (!Number.isFinite(id)) continue;
+        seen.add(id);
+        const h = recHash(r);
+        if (meta[id]?.h === h) continue;
+        ups.push({ user_id: user.id, media_id: id, record: cloudRecord(r), updated_at: now, _h: h });
+      }
+      const gone = Object.keys(meta).map(Number).filter((id) => !seen.has(id));
+
+      /* chunk by payload size — episode lists make some records heavy */
+      let chunk = [], size = 0;
+      const chunks = [];
+      for (const u of ups) {
+        const s = JSON.stringify(u.record).length;
+        if (chunk.length && (size + s > 700_000 || chunk.length >= 20)) { chunks.push(chunk); chunk = []; size = 0; }
+        chunk.push(u); size += s;
+      }
+      if (chunk.length) chunks.push(chunk);
+
+      for (const c of chunks) {
+        const { error } = await supa.from('library')
+          .upsert(c.map(({ _h, ...row }) => row), { onConflict: 'user_id,media_id' });
+        if (error) throw error;
+        for (const u of c) meta[u.media_id] = { h: u._h, t: now };
+        saveMeta();
+      }
+      if (gone.length) {
+        const { error } = await supa.from('library').delete()
+          .eq('user_id', user.id).in('media_id', gone);
+        if (error) throw error;
+        for (const id of gone) delete meta[id];
+        saveMeta();
+      }
+
+      /* Settings (minus device paths) — only when their hash moved.
+
+         Re-read and MERGE first: the phone can set API keys too, and blindly
+         upserting this app's copy would wipe a key added there minutes ago.
+         Remote wins for anything we don't currently hold a value for. */
+      const sh = hash(stableStringify(cloudSettings()));
+      if (localStorage.getItem(K('setH')) !== sh) {
+        const { data: cur } = await supa.from('settings')
+          .select('data').eq('user_id', user.id).maybeSingle();
+        const mine = cloudSettings();
+        const merged = { ...(cur?.data || {}), ...mine };
+        for (const k of ['tmdbKey', 'fanartKey', 'traceKey']) {
+          if (!mine[k] && cur?.data?.[k]) merged[k] = cur.data[k];   // don't delete theirs
+        }
+        const { error } = await supa.from('settings')
+          .upsert({ user_id: user.id, data: merged, updated_at: now });
+        if (error) throw error;
+        localStorage.setItem(K('setH'), sh);
+      }
+
+      online = true;
+      if (ups.length || gone.length) stampSync(); else syncPill();
+    } catch (e) {
+      online = false; syncPill();
+      console.warn('[sync] push failed:', e.message || e);
+    } finally { busy = false; }
+  }
+
+  /* —— pull ———————————————————————————————————— */
+  async function pullChanges({ full = false } = {}) {
+    if (!user || busy) return 0;
+    busy = true; syncPill('busy');
+    let applied = 0;
+    try {
+      const { data: manifest, error } = await supa.from('library')
+        .select('media_id,updated_at').eq('user_id', user.id);
+      if (error) throw error;
+
+      const remoteIds = new Set();
+      const want = [];
+      for (const row of manifest || []) {
+        remoteIds.add(row.media_id);
+        if (full || !meta[row.media_id] || meta[row.media_id].t !== row.updated_at) want.push(row.media_id);
+      }
+      for (let i = 0; i < want.length; i += 25) {
+        const { data: rows, error: e2 } = await supa.from('library')
+          .select('media_id,record,updated_at')
+          .eq('user_id', user.id).in('media_id', want.slice(i, i + 25));
+        if (e2) throw e2;
+        for (const row of rows || []) {
+          if (applyRemoteRecord(row.media_id, row.record, row.updated_at)) applied++;
+        }
+      }
+      /* rows deleted remotely: only trust this when we know we're current —
+         a record we've never pushed yet is NOT a remote deletion */
+      for (const id of Object.keys(meta).map(Number)) {
+        if (!remoteIds.has(id) && lastSyncAt() && meta[id]?.t) {
+          if (applyRemoteDelete(id)) applied++;
+        }
+      }
+
+      /* settings */
+      const { data: srow } = await supa.from('settings')
+        .select('data').eq('user_id', user.id).maybeSingle();
+      if (srow?.data) {
+        const merged = { ...appSettings, ...srow.data, mediaRoots: appSettings.mediaRoots };
+        if (JSON.stringify(merged) !== JSON.stringify(appSettings)) {
+          appSettings = merged;
+          window.hikari.saveSettings(appSettings).catch(() => {});
+        }
+        localStorage.setItem(K('setH'), hash(stableStringify(cloudSettings())));
+      }
+
+      online = true;
+    } catch (e) {
+      online = false;
+      console.warn('[sync] pull failed:', e.message || e);
+    } finally {
+      busy = false;
+      afterApply(applied > 0);
+      syncPill();
+    }
+    return applied;
+  }
+
+  async function fullSync(silent = false) {
+    if (!user) return;
+    const applied = await pullChanges();
+    await pushChanges();
+    stampSync();
+    fillTab();
+    if (!silent) toast(applied ? `Synced — ${applied} update${applied === 1 ? '' : 's'} applied` : 'Synced — up to date');
+  }
+
+  /* —— realtime ————————————————————————————————— */
+  function subscribe() {
+    unsubscribe();
+    channel = supa.channel('library-live')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'library', filter: `user_id=eq.${user.id}` },
+        (payload) => {
+          if (busy) return;                          // our own batch is in flight
+          let changed = false;
+          if (payload.eventType === 'DELETE') {
+            const id = payload.old?.media_id;
+            if (id != null && meta[id]) changed = applyRemoteDelete(Number(id));
+          } else {
+            const row = payload.new;
+            if (!row) return;
+            if (meta[row.media_id]?.h === recHash(row.record)) {      // our own echo
+              meta[row.media_id].t = row.updated_at; saveMeta();
+              return;
+            }
+            changed = applyRemoteRecord(row.media_id, row.record, row.updated_at);
+          }
+          if (changed) { afterApply(true); stampSync(); }
+        })
+      .subscribe();
+  }
+  function unsubscribe() {
+    if (channel) { supa.removeChannel(channel); channel = null; }
+  }
+
+  /* —— statusbar pill ———————————————————————————— */
+  function syncPill(state) {
+    const pill = document.getElementById('sb-sync');
+    const txt = document.getElementById('sb-sync-txt');
+    if (!pill) return;
+    if (!user) { pill.hidden = true; return; }
+    pill.hidden = false;
+    pill.classList.toggle('warn', !online);
+    if (state === 'busy') txt.textContent = 'SYNCING…';
+    else if (state === 'pending') txt.textContent = 'SYNC ·';
+    else if (!online) txt.textContent = 'SYNC OFFLINE';
+    else {
+      const t = lastSyncAt();
+      txt.textContent = t ? `SYNCED ${new Date(t).toTimeString().slice(0, 5)}` : 'SYNCED';
+    }
+  }
+
+  /* —— settings tab ————————————————————————————— */
+  function fillTab() {
+    const so = document.getElementById('syncSignedOut');
+    const si = document.getElementById('syncSignedIn');
+    if (!so || !si) return;
+    so.hidden = !!user;
+    si.hidden = !user;
+    if (!user) return;
+    document.getElementById('syncWho').textContent = user.email || user.id;
+    const kv = (k, v) => `<div class="kv"><span class="k">${esc(k)}</span><span class="v">${esc(String(v))}</span></div>`;
+    const t = lastSyncAt();
+    document.getElementById('syncStats').innerHTML = [
+      kv('Status', online ? 'Connected' : 'Offline — will retry'),
+      kv('Live updates', channel ? 'On' : 'Off'),
+      kv('Records tracked', Object.keys(meta).length),
+      kv('Last synced', t ? new Date(t).toLocaleString([], { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' }) : 'never')
+    ].join('');
+  }
+
+  async function doAuth(kind) {
+    const email = document.getElementById('syncEmail').value.trim();
+    const pass = document.getElementById('syncPass').value;
+    if (!email || !pass) return toast('Enter an email and password', 'err');
+    if (kind === 'up' && pass.length < 8) return toast('Password needs 8+ characters', 'err');
+    try {
+      if (kind === 'up') {
+        const { data, error } = await supa.auth.signUp({ email, password: pass });
+        if (error) throw error;
+        if (!data.session) await supa.auth.signInWithPassword({ email, password: pass })
+          .then(({ error: e }) => { if (e) throw e; });
+        toast('Account created — first sync starting');
+      } else {
+        const { error } = await supa.auth.signInWithPassword({ email, password: pass });
+        if (error) throw error;
+        toast('Signed in — syncing');
+      }
+      document.getElementById('syncPass').value = '';
+    } catch (e) {
+      toast(String(e.message || e).replace('AuthApiError: ', ''), 'err');
+    }
+  }
+
+  /* —— lifecycle ———————————————————————————————— */
+  function start() {
+    loadMeta();
+    subscribe();
+    syncPill('busy');
+    fillTab();
+    setTimeout(() => fullSync(true).then(scanLiteRecords), 2500);   // let boot settle first
+    clearInterval(pullTimer);
+    pullTimer = setInterval(() => { pullChanges(); }, 5 * 60 * 1000);
+  }
+  function stop() {
+    unsubscribe();
+    clearInterval(pullTimer);
+    clearTimeout(pushTimer);
+    user = null; meta = {};
+    syncPill(); fillTab();
+  }
+
+  supa.auth.onAuthStateChange((_ev, session) => {
+    const next = session?.user || null;
+    if (next?.id === user?.id) { user = next; return; }
+    user = next;
+    if (user) start(); else stop();
+  });
+
+  /* hook persist(): any library mutation schedules a push */
+  const _persist = persist;
+  persist = function () { _persist(); if (!applying) schedulePush(); };
+
+  /* hook settings saves from the modal */
+  if (typeof saveSettingsModal === 'function') {
+    const _ssm = saveSettingsModal;
+    saveSettingsModal = async function () { await _ssm(); schedulePush(); };
+  }
+
+  /* buttons (own listener — keeps app.js's action switch untouched) */
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    switch (btn.dataset.action) {
+      case 'sync-signin': doAuth('in'); break;
+      case 'sync-signup': doAuth('up'); break;
+      case 'sync-signout':
+        supa.auth.signOut().catch(() => {});
+        toast('Signed out — sync off');
+        break;
+      case 'sync-now': fullSync(); break;
+      case 'sync-pill':
+        settingsTab = 'sync';
+        openSettings();
+        break;
+    }
+  });
+
+  window.syncUI = { fill: fillTab, push: () => pushChanges(), pull: () => pullChanges(), state: () => ({ user: user?.email, online, meta: Object.keys(meta).length }) };
+})();

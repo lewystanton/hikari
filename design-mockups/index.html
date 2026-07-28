@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Hikari — Design Directions</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;800&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Inter',sans-serif;background:#0C0D12;color:#ECEEF6;min-height:100vh;
+  display:grid;place-items:center;padding:40px}
+.box{max-width:1060px;width:100%}
+h1{font-family:'Sora';font-weight:800;font-size:30px;letter-spacing:-.01em}
+p.sub{color:#8B91A8;font-size:14px;margin:10px 0 36px;line-height:1.7}
+.cards{display:grid;grid-template-columns:repeat(2,1fr);gap:18px}
+a.c{display:block;text-decoration:none;color:inherit;border-radius:18px;padding:26px 28px;
+  border:1px solid rgba(255,255,255,.08);transition:.2s;position:relative;overflow:hidden}
+a.c:hover{transform:translateY(-4px);border-color:rgba(255,255,255,.22)}
+a.c .no{font-size:11px;letter-spacing:.3em;opacity:.55;margin-bottom:14px}
+a.c h2{font-family:'Sora';font-weight:800;font-size:24px;margin-bottom:8px}
+a.c p{font-size:12.5px;line-height:1.7;opacity:.72;max-width:420px}
+a.c .pal{display:flex;gap:7px;margin-top:18px}
+a.c .pal i{width:22px;height:22px;border-radius:7px;border:1px solid rgba(255,255,255,.25)}
+a.c.washi{background:#F6F1E6;color:#221C13}
+a.c.washi h2{font-family:Georgia,'Times New Roman',serif}
+a.c.signal{background:linear-gradient(140deg,#0A0D1E,#131033)}
+a.c.signal h2{color:#FF3D8A;text-shadow:0 0 18px rgba(255,61,138,.55)}
+a.c.indexb{background:#FAFAF5;color:#0B0B0B}
+a.c.indexb h2{text-transform:uppercase;letter-spacing:.02em}
+a.c.indexb .no{color:#FF4400;opacity:1}
+a.c.aurora{background:radial-gradient(400px 200px at 20% 0%,rgba(110,123,255,.25),transparent 60%),
+  radial-gradient(400px 220px at 90% 100%,rgba(53,224,197,.18),transparent 60%),#12151F}
+a.c.deck{background:linear-gradient(160deg,#0E1013,#14201D)}
+a.c.deck h2{color:#31C8B0}
+a.c.dember{background:linear-gradient(160deg,#121013,#241A10)}
+a.c.dember h2{color:#E8B45A}
+a.c.dslate{background:linear-gradient(160deg,#0D1116,#12202E)}
+a.c.dslate h2{color:#6CA8FF}
+a.c.dnoir{background:radial-gradient(360px 200px at 80% 0%,rgba(139,124,255,.28),transparent 60%),#0B0D16}
+a.c.dnoir h2{color:#8B7CFF}
+a.c.nkur{background:radial-gradient(360px 200px at 80% 0%,rgba(255,75,92,.24),transparent 60%),#0C0D14}
+a.c.nkur h2{color:#FF4B5C}
+a.c.ncob{background:radial-gradient(360px 200px at 20% 0%,rgba(70,212,242,.2),transparent 60%),#080C12}
+a.c.ncob h2{color:#46D4F2}
+a.c.ngho{background:#0A0A0C;border-color:rgba(255,255,255,.16)!important}
+a.c.ngho h2{color:#F2F2F4}
+a.c.theater{background:linear-gradient(0deg,#08090C 30%,#1A1D26)}
+a.c.studio{background:linear-gradient(160deg,#101113,#1E1810)}
+a.c.studio h2{color:#E8A13C}
+.ft{margin-top:30px;font-size:11.5px;color:#666D84;line-height:1.8}
+kbd{background:rgba(255,255,255,.08);padding:2px 8px;border-radius:6px;font-family:inherit}
+</style>
+</head>
+<body>
+<div class="box">
+  <h1>Hikari — design directions</h1>
+  <p class="sub"><b style="color:#ECEEF6">Round 4 — Noir variations, now with detail pages.</b> Click any poster inside a mockup to open the show page; ← Library returns.</p>
+  <div class="cards" style="grid-template-columns:repeat(3,1fr)">
+    <a class="c nkur" href="noir-kurenai.html">
+      <div class="no" style="color:#FF4B5C">05c-i — 紅</div><h2>Noir · Kurenai</h2>
+      <p>Noir run hot. Crimson glow, ghost kanji billboard, portrait continue minis. Detail: hero + episode cards + dub-schedule rail with calibrator.</p>
+      <div class="pal"><i style="background:#0C0D14"></i><i style="background:#FF4B5C"></i><i style="background:#FFB86B"></i><i style="background:#4EDCA8"></i></div>
+    </a>
+    <a class="c ncob" href="noir-cobalt.html">
+      <div class="no" style="color:#46D4F2">05c-ii — 鈷</div><h2>Noir · Cobalt</h2>
+      <p>Noir run cold. Tabs live in the titlebar, slim spotlight + broadcast-timeline widget. Detail: ribbon hero, wide episode cards, sticky rail with dub week-map.</p>
+      <div class="pal"><i style="background:#080C12"></i><i style="background:#46D4F2"></i><i style="background:#5FA8FF"></i><i style="background:#FFC86B"></i></div>
+    </a>
+    <a class="c ngho" href="noir-ghost.html">
+      <div class="no" style="color:#F2F2F4">05c-iii — 白</div><h2>Noir · Ghost</h2>
+      <p>Noir with the colour removed — silver glass; the only colour is the artwork and each show's own accent. Split billboard. Detail: cinematic centered, episode rows.</p>
+      <div class="pal"><i style="background:#0A0A0C"></i><i style="background:#F2F2F4"></i><i style="background:#E4A15D"></i><i style="background:#4EDCA8"></i></div>
+    </a>
+  </div>
+  <p class="sub" style="margin-top:44px"><b style="color:#8B91A8">Round 3 — Deck variations.</b> Same shell (sidebar · rails · dense grid · queue bar), three personalities.</p>
+  <div class="cards" style="grid-template-columns:repeat(3,1fr)">
+    <a class="c dember" href="deck-ember.html">
+      <div class="no" style="color:#E8B45A">05a — 残火</div><h2>Deck · Ember</h2>
+      <p>Warm cinema. Plex-style poster billboard over blurred art, ambient show-colour glow, gold accents. Closest to Hikari's current soul.</p>
+      <div class="pal"><i style="background:#121013"></i><i style="background:#E8B45A"></i><i style="background:#67C98F"></i><i style="background:#9C948D"></i></div>
+    </a>
+    <a class="c dslate" href="deck-slate.html">
+      <div class="no" style="color:#6CA8FF">05b — 石盤</div><h2>Deck · Slate</h2>
+      <p>Dense dashboard. Icon rail, slim resume ribbon, compact 118px grid, right widget column: on-air next, up next, convert activity.</p>
+      <div class="pal"><i style="background:#0D1116"></i><i style="background:#6CA8FF"></i><i style="background:#5BD6A2"></i><i style="background:#F0B45F"></i></div>
+    </a>
+    <a class="c dnoir" href="deck-noir.html">
+      <div class="no" style="color:#8B7CFF">05c — 夜光</div><h2>Deck · Noir</h2>
+      <p>Night glass. Blurred ambient backdrop under frosted chrome, violet glow, titles inside posters, per-show colour halo on hover.</p>
+      <div class="pal"><i style="background:#090B12"></i><i style="background:#8B7CFF"></i><i style="background:#FF6EB0"></i><i style="background:#4EDCA8"></i></div>
+    </a>
+  </div>
+  <p class="sub" style="margin-top:44px"><b style="color:#8B91A8">Round 2 — app-native.</b> Fixed app shells: window chrome, persistent rail/tabs, internal scrolling panes, queue &amp; status bars.</p>
+  <div class="cards">
+    <a class="c deck" href="deck.html">
+      <div class="no" style="color:#31C8B0">05 — 操作盤</div><h2>Deck</h2>
+      <p>The media-server app. Sidebar with counts, filter-chip topbar, billboard + horizontal rails, dense hover-action grid, and a live transcode-queue bar at the bottom.</p>
+      <div class="pal"><i style="background:#0E1013"></i><i style="background:#31C8B0"></i><i style="background:#E8A13C"></i><i style="background:#8D96A4"></i></div>
+    </a>
+    <a class="c theater" href="theater.html">
+      <div class="no" style="color:#4ADE80">06 — 劇場</div><h2>Theater</h2>
+      <p>Lean-back TV. The whole window is the backdrop; translucent tabs, big title block, focus-scaled poster rails. Netflix-in-a-window energy.</p>
+      <div class="pal"><i style="background:#08090C"></i><i style="background:#FFFFFF"></i><i style="background:#4ADE80"></i><i style="background:#E5B567"></i></div>
+    </a>
+    <a class="c studio" href="studio.html">
+      <div class="no" style="color:#E8A13C">07 — 工房</div><h2>Studio</h2>
+      <p>Three-pane power manager — tree, sortable list with progress cells, inspector with episode states. Sonarr/Lightroom energy, status bar with scan + convert activity.</p>
+      <div class="pal"><i style="background:#101113"></i><i style="background:#E8A13C"></i><i style="background:#57C98B"></i><i style="background:#8C94A0"></i></div>
+    </a>
+  </div>
+  <p class="sub" style="margin-top:44px"><b style="color:#8B91A8">Round 1 — first pass.</b> These read more editorial/web — kept for reference.</p>
+  <div class="cards">
+    <a class="c washi" href="washi.html">
+      <div class="no">01 — 和紙</div><h2>Washi</h2>
+      <p>Gallery light. Paper grain, mounted-print poster mats, hanko seals, vertical Japanese type. The library as a museum archive.</p>
+      <div class="pal"><i style="background:#F6F1E6"></i><i style="background:#221C13"></i><i style="background:#C73E2E"></i><i style="background:#A8853C"></i></div>
+    </a>
+    <a class="c signal" href="signal.html">
+      <div class="no" style="color:#2FE6FF">02 — 電光</div><h2>Signal</h2>
+      <p>Shinjuku at night. Neon tube accents, glass over city bokeh, a train-departure board for the airing schedule, glow-on-hover posters.</p>
+      <div class="pal"><i style="background:#070912"></i><i style="background:#FF3D8A"></i><i style="background:#2FE6FF"></i><i style="background:#8B5CFF"></i></div>
+    </a>
+    <a class="c indexb" href="index-b.html">
+      <div class="no">03 — 索引</div><h2>Index</h2>
+      <p>Brutalist archive. Massive type, exposed rules, spec-sheet hero, a real data table for broadcasts, cards that invert on hover. The database made visible.</p>
+      <div class="pal"><i style="background:#FAFAF5"></i><i style="background:#0B0B0B"></i><i style="background:#FF4400"></i><i style="background:#6E6E64"></i></div>
+    </a>
+    <a class="c aurora" href="aurora.html">
+      <div class="no" style="color:#35E0C5">04 — 極光</div><h2>Aurora</h2>
+      <p>Soft-dark product polish — Linear/Raycast energy. Floating pill nav, gradient-ring progress dials, a 7-day strip with a glowing TODAY column.</p>
+      <div class="pal"><i style="background:#0A0C13"></i><i style="background:#6E7BFF"></i><i style="background:#35E0C5"></i><i style="background:#B06CFF"></i></div>
+    </a>
+  </div>
+  <p class="ft">All four are static HTML in <kbd>design-mockups/</kbd> — open in any browser. Nothing in the app changed.</p>
+</div>
+</body>
+</html>

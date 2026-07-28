@@ -1,0 +1,451 @@
+/* On-device enrichment — a faithful port of the desktop pipeline
+   (src/api.js): franchise BFS over AniList relations, the epv-5 episode
+   merge (Jikan canon + Kitsu synopses/thumbs + TVDB stills), and the
+   artwork pools.
+
+   This is what makes the phone a first-class client rather than a viewer for
+   whatever a desktop happened to sync in: everything the desktop can build,
+   it builds here too, from the phone.
+
+   CORS-blocked hosts (arm.haglund.dev, skyhook.sonarr.tv, animeschedule.net)
+   go through CapacitorHttp — native requests don't care about CORS. Only the
+   browser preview skips those steps. */
+import { Capacitor, CapacitorHttp } from '@capacitor/core';
+import { gql } from './api.js';
+
+export const isNative = () => Capacitor.isNativePlatform();
+const jsleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function xjson(url) {
+  try {
+    if (isNative()) {
+      const res = await CapacitorHttp.get({
+        url, headers: { Accept: 'application/json' },
+        connectTimeout: 15000, readTimeout: 25000
+      });
+      if (res.status < 200 || res.status >= 300) return null;
+      return typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
+    }
+    const r = await fetch(url, { headers: { Accept: 'application/json' } });
+    return r.ok ? await r.json() : null;
+  } catch { return null; }
+}
+
+/* ——— franchise graph (desktop fetchFranchise, verbatim logic) ——— */
+const REL_BATCH_QUERY = `
+query ($ids: [Int]) {
+  Page(perPage: 50) {
+    media(id_in: $ids, type: ANIME) {
+      id
+      relations { edges { relationType node { id type } } }
+    }
+  }
+}`;
+const HYDRATE_QUERY = `
+query ($ids: [Int]) {
+  Page(perPage: 50) {
+    media(id_in: $ids, type: ANIME) {
+      id format status seasonYear
+      startDate { year month }
+      episodes
+      title { romaji english native }
+      synonyms
+      coverImage { large }
+      bannerImage
+      characters(perPage: 8, sort: ROLE) {
+        edges { node { id } voiceActors(language: ENGLISH) { id } }
+      }
+    }
+  }
+}`;
+const EXPAND_RELS = ['PREQUEL', 'SEQUEL', 'SIDE_STORY', 'PARENT', 'SUMMARY', 'ALTERNATIVE'];
+const INCLUDE_RELS = [...EXPAND_RELS, 'SPIN_OFF'];
+const FRANCHISE_CAP = 40;
+
+export async function fetchFranchise(rootId) {
+  const seen = new Set([rootId]);
+  const relMap = new Map();
+  let frontier = [rootId];
+  for (let depth = 0; depth < 5 && frontier.length; depth++) {
+    const data = await gql(REL_BATCH_QUERY, { ids: frontier }, { bg: true });
+    const next = [];
+    for (const m of data.Page.media || []) {
+      relMap.set(m.id, (m.relations?.edges || [])
+        .filter((e) => e.node?.type === 'ANIME')
+        .map((e) => [e.node.id, e.relationType]));
+      for (const ed of m.relations?.edges || []) {
+        const n = ed.node;
+        if (!n || n.type !== 'ANIME') continue;
+        if (!INCLUDE_RELS.includes(ed.relationType)) continue;
+        if (seen.has(n.id) || seen.size >= FRANCHISE_CAP) continue;
+        seen.add(n.id);
+        if (EXPAND_RELS.includes(ed.relationType)) next.push(n.id);
+      }
+    }
+    frontier = next;
+  }
+  const ids = [...seen];
+
+  /* The BFS only asked the frontier for relations, so leaves have none. Fill
+     the gaps — the relation TYPES are what separate a sequel from a reboot,
+     and without them every entry looks equally related to every other. */
+  const unknown = ids.filter((id) => !relMap.has(id));
+  for (let i = 0; i < unknown.length; i += 50) {
+    try {
+      const d = await gql(REL_BATCH_QUERY, { ids: unknown.slice(i, i + 50) }, { bg: true });
+      for (const m of d.Page.media || []) {
+        relMap.set(m.id, (m.relations?.edges || [])
+          .filter((e) => e.node?.type === 'ANIME')
+          .map((e) => [e.node.id, e.relationType]));
+      }
+    } catch { /* partial relations beat none */ }
+  }
+
+  const media = [];
+  for (let i = 0; i < ids.length; i += 50) {
+    const d = await gql(HYDRATE_QUERY, { ids: ids.slice(i, i + 50) }, { bg: true });
+    media.push(...(d.Page.media || []));
+  }
+  const mapped = media
+    .filter((m) => m.format !== 'MUSIC')
+    .map((m) => ({
+      id: m.id,
+      format: m.format || '',
+      status: m.status || '',
+      year: m.seasonYear || m.startDate?.year || null,
+      sort: (m.startDate?.year || 9999) * 100 + (m.startDate?.month || 0),
+      episodes: m.episodes || null,
+      dub: (m.characters?.edges || []).some((e) => e.voiceActors?.length),
+      en: m.title.english || '',
+      romaji: m.title.romaji || '',
+      native: m.title.native || '',
+      syn: m.synonyms || [],
+      cover: m.coverImage?.large || '',
+      banner: m.bannerImage || '',
+      rel: (relMap.get(m.id) || []).filter(([other]) => seen.has(other))
+    }))
+    .sort((a, b) => a.sort - b.sort);
+  /* English first, and honestly. AniList leaves `title.english` null on many
+     specials and unaired seasons. Two safe recoveries, then plain fallbacks:
+     (A) reuse a sibling's English for a matching romaji prefix; (B) trust a
+     synonym only when it CONTAINS a sibling's English title — that is what
+     separates the real English name ("The Testament of Sister New Devil BURST
+     Specials") from a literal gloss (Sekirei -> "Wagtail") or a renumbering
+     (High School DxD NEW -> "High School DxD 2"). Keep in step with desktop. */
+  const withEn = mapped.filter((x) => x.en && x.romaji);
+  const isLatin = (t) => !/[぀-ヿ㐀-䶿一-鿿가-힯]/.test(t || '');
+  for (const x of mapped) {
+    if (x.en) { x.title = x.en; continue; }
+    let best = null;
+    for (const w of withEn) {
+      if (w.id !== x.id && x.romaji.startsWith(w.romaji) && (!best || w.romaji.length > best.romaji.length)) best = w;
+    }
+    if (best) { x.title = best.en + x.romaji.slice(best.romaji.length); continue; }
+    const vouched = (x.syn || [])
+      .filter(isLatin)
+      .filter((cand) => withEn.some((w) => w.id !== x.id && w.en.length > 6
+        && cand.toLowerCase().includes(w.en.toLowerCase())))
+      .sort((a, c) => c.length - a.length)[0];
+    x.title = vouched || x.romaji || x.native || '';
+  }
+  return mapped.map(({ en, romaji, syn, ...rest }) => rest);
+}
+
+/* ——— episode sources (desktop ports) ——— */
+async function fetchJikanEpisodes(malId) {
+  if (!malId) return [];
+  const out = [];
+  try {
+    for (let page = 1; page <= 4; page++) {
+      const json = await xjson(`https://api.jikan.moe/v4/anime/${malId}/episodes?page=${page}`);
+      if (!json) break;
+      out.push(...(json.data || []).map((e) => ({
+        number: e.mal_id, title: e.title || `Episode ${e.mal_id}`,
+        aired: e.aired ? e.aired.slice(0, 10) : '',
+        filler: !!e.filler, recap: !!e.recap, score: e.score ?? null
+      })));
+      if (!json.pagination?.has_next_page) break;
+      await jsleep(360);
+    }
+  } catch { /* partial is fine */ }
+  return out;
+}
+
+async function fetchKitsuEpisodes(malId) {
+  const empty = { count: 0, map: new Map() };
+  if (!malId) return empty;
+  try {
+    const mjson = await xjson(`https://kitsu.io/api/edge/mappings?filter[externalSite]=myanimelist/anime&filter[externalId]=${malId}&include=item`);
+    const kitsuId = mjson?.included?.[0]?.id;
+    if (!kitsuId) return empty;
+    const map = new Map();
+    let count = 0;
+    for (let offset = 0; offset < 160; offset += 20) {
+      const json = await xjson(`https://kitsu.io/api/edge/anime/${kitsuId}/episodes?page[limit]=20&page[offset]=${offset}&sort=number`);
+      if (!json?.data?.length) break;
+      count = json.meta?.count || count;
+      for (const e of json.data) {
+        const a = e.attributes || {};
+        if (a.number != null && !map.has(a.number)) {
+          map.set(a.number, {
+            title: a.canonicalTitle || '', thumbnail: a.thumbnail?.original || '',
+            aired: a.airdate || '', synopsis: a.synopsis || '', length: a.length || null
+          });
+        }
+      }
+      if (!json.links?.next) break;
+      await jsleep(220);
+    }
+    return { count, map };
+  } catch { return empty; }
+}
+
+async function fetchTvdbEpisodes(malId) {
+  const empty = new Map();
+  if (!malId || !isNative()) return empty;    // no-CORS host — device only
+  try {
+    const arm = await armIds(malId);       // shared cache with the art pool
+    const tvdbId = arm?.thetvdb;
+    if (!tvdbId) return empty;
+    const season = Number.isInteger(arm['thetvdb-season']) && arm['thetvdb-season'] > 0 ? arm['thetvdb-season'] : 1;
+    const show = await xjson(`https://skyhook.sonarr.tv/v1/tvdb/shows/en/${tvdbId}`);
+    if (!show?.episodes) return empty;
+    const map = new Map();
+    for (const e of show.episodes) {
+      if (e.seasonNumber !== season || e.episodeNumber == null) continue;
+      if (!map.has(e.episodeNumber)) {
+        map.set(e.episodeNumber, {
+          title: e.title || '', thumbnail: e.image || '',
+          aired: e.airDate || '', overview: e.overview || '',
+          absolute: e.absoluteEpisodeNumber || null
+        });
+      }
+    }
+    return map;
+  } catch { return empty; }
+}
+
+export async function fetchDubSchedule(idMal) {
+  if (!idMal || !isNative()) return null;     // no-CORS host — device only
+  const j = await xjson(`https://animeschedule.net/api/v3/anime?mal-ids=${idMal}`);
+  const a = (j?.anime || (Array.isArray(j) ? j : []))[0];
+  if (!a) return null;
+  const iso = (v) => (v && !String(v).startsWith('0001-') ? v : null);
+  return {
+    dubPremier: iso(a.dubPremier), dubTime: iso(a.dubTime),
+    subTime: iso(a.subTime), jpnTime: iso(a.jpnTime),
+    dubDelayedFrom: iso(a.dubDelayedFrom), dubDelayedUntil: iso(a.dubDelayedUntil),
+    route: a.route || ''
+  };
+}
+
+/* ——— the epv-5 merge (desktop mergeEpisodes, verbatim) ——— */
+function mergeEpisodes(totalHint, anilistEps, jikanRows, kitsu, tvdb = new Map()) {
+  let jr = jikanRows;
+  let jikanSuspect = false;
+  if (totalHint && jr.length > totalHint) {
+    jikanSuspect = true;
+    jr = jr.filter((r) => r.number >= 1 && r.number <= totalHint);
+  }
+  /* AniList's episode count is per-SEASON and authoritative when it exists.
+     Kitsu and TVDB routinely index a multi-season show as one continuous run
+     (TVDB has all 24 Asterisk War episodes under one series), so taking the
+     max across sources handed a 12-episode season 24 rows — the same
+     over-long-source problem the Jikan clamp above already guards against.
+     Only let the other sources set the count when AniList doesn't know it. */
+  const canonical = totalHint || Math.max(jr.length, kitsu.count || 0, kitsu.map.size, tvdb.size);
+  let anEps = anilistEps.filter((e) => e.number != null);
+  if (canonical && anEps.length) {
+    const min = Math.min(...anEps.map((e) => e.number));
+    const max = Math.max(...anEps.map((e) => e.number));
+    if (min > 1 || max > canonical) {
+      const offset = min - 1;
+      anEps = anEps.map((e) => ({ ...e, number: e.number - offset }))
+        .filter((e) => e.number >= 1 && e.number <= canonical);
+    }
+  }
+  const anMap = new Map();
+  for (const e of anEps) if (!anMap.has(e.number)) anMap.set(e.number, e);
+  const N = canonical || (anMap.size ? Math.max(...anMap.keys()) : 0);
+  if (!N) {
+    return anilistEps.map((e) => ({
+      number: e.number, title: e.title, thumbnail: e.thumbnail,
+      url: e.url, site: e.site, aired: '', filler: false
+    }));
+  }
+  const jMap = new Map(jr.map((r) => [r.number, r]));
+  const rows = [];
+  for (let i = 1; i <= N; i++) {
+    const a = anMap.get(i), j = jMap.get(i), k = kitsu.map.get(i), t = tvdb.get(i);
+    const titleOrder = jikanSuspect ? [t?.title, k?.title, j?.title] : [j?.title, t?.title, k?.title];
+    const airedOrder = jikanSuspect ? [t?.aired, k?.aired, j?.aired] : [j?.aired, t?.aired, k?.aired];
+    rows.push({
+      number: i,
+      title: titleOrder.find(Boolean) || (a ? a.title.replace(/^Episode\s*\d+\s*[-–—]\s*/i, '') : `Episode ${i}`),
+      thumbnail: t?.thumbnail || k?.thumbnail || a?.thumbnail || '',
+      url: a?.url || '',
+      site: a?.url ? (a.site || '') : '',
+      aired: (airedOrder.find(Boolean) || '').slice(0, 10),
+      filler: !!j?.filler,
+      recap: !!j?.recap,
+      overview: t?.overview || k?.synopsis || '',
+      runtime: k?.length || null,
+      absolute: t?.absolute || null,
+      score: j?.score ?? null
+    });
+  }
+  return rows;
+}
+
+/* ——— artwork pools (port of desktop fetchArtPool) ———
+   Ported so the phone builds its own galleries instead of waiting for a
+   desktop to sync one in. The keys ride the account's settings row and can be
+   set from either app. With neither key set this still gathers AniList,
+   Jikan, Kitsu and TVDB art — just fewer, lower-resolution options. */
+const TMDB_IMG = 'https://image.tmdb.org/t/p/';
+const armCache = new Map();
+const tvdbShowCache = new Map();
+
+async function armIds(malId) {
+  if (armCache.has(malId)) return armCache.get(malId);
+  const j = await xjson(`https://arm.haglund.dev/api/v2/ids?source=myanimelist&id=${malId}`);
+  armCache.set(malId, j);
+  return j;
+}
+
+async function fetchTmdbImages(malId, key) {
+  const out = { covers: [], banners: [] };
+  if (!key || !malId) return out;
+  try {
+    const arm = await armIds(malId);
+    const tmdbId = arm?.themoviedb;
+    if (!tmdbId) return out;
+    const media = arm?.media === 'MOVIE' ? 'movie' : 'tv';
+    const imgs = await xjson(`https://api.themoviedb.org/3/${media}/${tmdbId}/images?api_key=${encodeURIComponent(key)}`);
+    for (const p of imgs?.posters || []) out.covers.push(`${TMDB_IMG}w500${p.file_path}`);
+    /* backdrops become full-bleed heroes — originals, not w1280 */
+    for (const b of imgs?.backdrops || []) out.banners.push(`${TMDB_IMG}original${b.file_path}`);
+    if (media === 'tv') {
+      const detail = await xjson(`https://api.themoviedb.org/3/tv/${tmdbId}?api_key=${encodeURIComponent(key)}`);
+      const nums = (detail?.seasons || []).map((x) => x.season_number)
+        .filter((n) => Number.isInteger(n) && n > 0).slice(0, 8);
+      if (!nums.length) nums.push(1);
+      for (const n of nums) {
+        const s = await xjson(`https://api.themoviedb.org/3/tv/${tmdbId}/season/${n}/images?api_key=${encodeURIComponent(key)}`);
+        for (const p of s?.posters || []) out.covers.push(`${TMDB_IMG}w500${p.file_path}`);
+      }
+    }
+  } catch { /* no tmdb art */ }
+  return out;
+}
+
+async function fetchFanartImages(malId, key) {
+  const out = { covers: [], banners: [] };
+  if (!key || !malId) return out;
+  try {
+    const arm = await armIds(malId);
+    if (!arm?.thetvdb) return out;
+    const data = await xjson(`https://webservice.fanart.tv/v3/tv/${arm.thetvdb}?api_key=${encodeURIComponent(key)}`);
+    if (!data) return out;
+    for (const p of data.tvposter || []) out.covers.push(p.url);
+    for (const p of data.seasonposter || []) out.covers.push(p.url);
+    for (const b of data.showbackground || []) out.banners.push(b.url);
+    for (const b of data.tvbanner || []) out.banners.push(b.url);
+  } catch { /* no fanart */ }
+  return out;
+}
+
+const ART_POOL_QUERY =
+  'query($ids:[Int]){Page(perPage:50){media(id_in:$ids,type:ANIME){id idMal coverImage{extraLarge large} bannerImage}}}';
+
+export async function fetchArtPool(anilistIds, malId, keys = {}) {
+  const covers = [], banners = [];
+  if (keys.tmdb) {
+    const t = await fetchTmdbImages(malId, keys.tmdb);
+    covers.push(...t.covers); banners.push(...t.banners);
+  }
+  if (keys.fanart) {
+    const f = await fetchFanartImages(malId, keys.fanart);
+    covers.push(...f.covers); banners.push(...f.banners);
+  }
+  try {
+    const d = await gql(ART_POOL_QUERY, { ids: anilistIds.slice(0, 50) }, { bg: true });
+    const media = d.Page.media || [];
+    for (const m of media) {
+      const c = m.coverImage?.extraLarge || m.coverImage?.large;
+      if (c) covers.push(c);
+      if (m.bannerImage) banners.push(m.bannerImage);
+    }
+    for (const id of media.map((m) => m.idMal).filter(Boolean).slice(0, 5)) {
+      /* Jikan /pictures 504s on a cold cache — one retry usually lands */
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const j = await xjson(`https://api.jikan.moe/v4/anime/${id}/pictures`);
+        if (j) {
+          for (const p of j.data || []) {
+            const u = p.jpg?.large_image_url || p.jpg?.image_url;
+            if (u) covers.push(u);
+          }
+          break;
+        }
+        await jsleep(1200);
+      }
+      await jsleep(500);
+    }
+  } catch { /* pool stays partial */ }
+
+  try {
+    const m = await xjson(`https://kitsu.io/api/edge/mappings?filter[externalSite]=myanimelist/anime&filter[externalId]=${malId}&include=item`);
+    const at = m?.included?.[0]?.attributes;
+    if (at?.posterImage?.original) covers.push(at.posterImage.original);
+    if (at?.coverImage?.original) banners.push(at.coverImage.original);
+  } catch { /* no kitsu art */ }
+
+  try {
+    const arm = await armIds(malId);
+    if (arm?.thetvdb) {
+      let show = tvdbShowCache.get(arm.thetvdb);
+      if (!show) {
+        show = await xjson(`https://skyhook.sonarr.tv/v1/tvdb/shows/en/${arm.thetvdb}`);
+        if (show) tvdbShowCache.set(arm.thetvdb, show);
+      }
+      for (const im of show?.images || []) {
+        const t = (im.coverType || '').toLowerCase();
+        if (t === 'fanart' || t === 'banner') banners.push(im.url);
+        else if (t === 'poster') covers.push(im.url);
+      }
+    }
+  } catch { /* no tvdb art */ }
+
+  return { covers: [...new Set(covers)], banners: [...new Set(banners)] };
+}
+
+/* ——— entry point: take a lite record, return the finished one ———
+   User-owned fields ride through untouched (spread base). On device every
+   source is reachable, so the record comes out at full strength (epv 5,
+   frv 2) — identical to what the desktop produces, and needing nothing from
+   it. The browser preview can't reach the CORS-blocked hosts, so it stays at
+   epv 0 and will be finished by whichever real client opens it next. */
+export async function enrichRecord(rec) {
+  const native = isNative();
+  const franchise = await fetchFranchise(rec.id);
+  const anilistEps = (rec.episodesList || [])
+    .filter((e) => e.url || e.thumbnail)
+    .map((e) => ({ number: e.number ?? e.n, title: e.title || '', thumbnail: e.thumbnail || '', url: e.url || '', site: e.site || '' }));
+  const jikan = await fetchJikanEpisodes(rec.idMal);
+  const kitsu = await fetchKitsuEpisodes(rec.idMal);
+  const tvdb = await fetchTvdbEpisodes(rec.idMal);
+  const rows = mergeEpisodes(rec.episodes, anilistEps, jikan, kitsu, tvdb);
+  let dubSched = rec.dubSched || null;
+  if (rec.status === 'RELEASING') dubSched = (await fetchDubSchedule(rec.idMal)) || dubSched;
+  return {
+    ...rec,
+    franchise,
+    episodesList: rows.length ? rows : rec.episodesList,
+    episodeSource: rows.length ? 'merged' : rec.episodeSource,
+    epSources: ['JIKAN', kitsu.map.size && 'KITSU', tvdb.size && 'TVDB'].filter(Boolean).join('+') || rec.epSources,
+    epv: native ? 5 : 0,
+    frv: 4,                      // franchise entries carry per-season dub flags
+    ...(dubSched ? { dubSched } : {}),
+    fetchedAt: Date.now()
+  };
+}

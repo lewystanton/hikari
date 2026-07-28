@@ -1,0 +1,13 @@
+{
+  "appId": "dev.lewis.hikari",
+  "appName": "Hikari",
+  "webDir": "dist",
+  "backgroundColor": "#0A0A0C",
+  "server": {
+    "androidScheme": "https",
+    "cleartext": true
+  },
+  "android": {
+    "allowMixedContent": true
+  }
+}
