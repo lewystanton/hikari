@@ -43,6 +43,29 @@
   const lastSyncAt = () => Number(localStorage.getItem(K('last')) || 0);
   const stampSync = () => { localStorage.setItem(K('last'), String(Date.now())); syncPill(); };
 
+  /* —— tombstones ————————————————————————————————
+     A row missing from the cloud used to mean "deleted, remove it locally",
+     and a record missing from `library` used to mean "deleted, remove it
+     from the cloud". Both are wrong: they are equally consistent with a
+     stale reader or a partial load, and one such device silently deleted 41
+     shows from the account. Absence is now never authoritative — only an
+     explicit tombstone is. They live in the settings row (already shared and
+     merged by both apps) so no schema change is needed. */
+  const TOMB_CAP = 800;
+  let tombs = {};               // mediaId -> deletion timestamp (ms)
+  const loadTombs = () => { try { tombs = JSON.parse(localStorage.getItem(K('tomb'))) || {}; } catch { tombs = {}; } };
+  const saveTombs = () => {
+    const ids = Object.keys(tombs).sort((a, b) => tombs[b] - tombs[a]).slice(0, TOMB_CAP);
+    tombs = Object.fromEntries(ids.map((id) => [id, tombs[id]]));
+    try { localStorage.setItem(K('tomb'), JSON.stringify(tombs)); } catch {}
+  };
+  function markDeleted(ids) {
+    const now = Date.now();
+    for (const id of [].concat(ids)) if (Number.isFinite(Number(id))) tombs[Number(id)] = now;
+    saveTombs();
+    schedulePush();
+  }
+
   /* —— hashing / record shaping ————————————————— */
   function hash(s) {
     let h = 5381;
@@ -188,7 +211,18 @@
         if (meta[id]?.h === h) continue;
         ups.push({ user_id: user.id, media_id: id, record: cloudRecord(r), updated_at: now, _h: h });
       }
-      const gone = Object.keys(meta).map(Number).filter((id) => !seen.has(id));
+      /* Only tombstoned ids may be deleted from the cloud. Anything else we
+         hold a sync ledger entry for but no record is this device being out
+         of date — forget the ledger entry so the next pull brings it back. */
+      const orphans = Object.keys(meta).map(Number).filter((id) => !seen.has(id));
+      const gone = orphans.filter((id) => tombs[id]);
+      const stale = orphans.filter((id) => !tombs[id]);
+      if (stale.length) {
+        console.warn(`[sync] ${stale.length} record(s) missing locally but never deleted — re-pulling instead of deleting remotely`);
+        for (const id of stale) delete meta[id];
+        saveMeta();
+        setTimeout(() => pullChanges().catch(() => {}), 1500);
+      }
 
       /* chunk by payload size — episode lists make some records heavy */
       let chunk = [], size = 0;
@@ -220,12 +254,20 @@
          Re-read and MERGE first: the phone can set API keys too, and blindly
          upserting this app's copy would wipe a key added there minutes ago.
          Remote wins for anything we don't currently hold a value for. */
-      const sh = hash(stableStringify(cloudSettings()));
+      const sh = hash(stableStringify({ ...cloudSettings(), tombstones: tombs }));
       if (localStorage.getItem(K('setH')) !== sh) {
         const { data: cur } = await supa.from('settings')
           .select('data').eq('user_id', user.id).maybeSingle();
         const mine = cloudSettings();
         const merged = { ...(cur?.data || {}), ...mine };
+        /* tombstones are a union, never a replacement — the other device's
+           deletions must survive ours */
+        const bothTombs = { ...(cur?.data?.tombstones || {}) };
+        for (const [id, t] of Object.entries(tombs)) {
+          if (!bothTombs[id] || bothTombs[id] < t) bothTombs[id] = t;
+        }
+        merged.tombstones = bothTombs;
+        Object.assign(tombs, bothTombs); saveTombs();
         for (const k of ['tmdbKey', 'fanartKey', 'traceKey']) {
           if (!mine[k] && cur?.data?.[k]) merged[k] = cur.data[k];   // don't delete theirs
         }
@@ -268,24 +310,40 @@
           if (applyRemoteRecord(row.media_id, row.record, row.updated_at)) applied++;
         }
       }
-      /* rows deleted remotely: only trust this when we know we're current —
-         a record we've never pushed yet is NOT a remote deletion */
-      for (const id of Object.keys(meta).map(Number)) {
-        if (!remoteIds.has(id) && lastSyncAt() && meta[id]?.t) {
-          if (applyRemoteDelete(id)) applied++;
-        }
-      }
-
-      /* settings */
+      /* settings — read before reconciling deletions, because the tombstone
+         list rides along in this row */
       const { data: srow } = await supa.from('settings')
         .select('data').eq('user_id', user.id).maybeSingle();
       if (srow?.data) {
-        const merged = { ...appSettings, ...srow.data, mediaRoots: appSettings.mediaRoots };
+        const { tombstones, ...remoteSettings } = srow.data;
+        for (const [id, t] of Object.entries(tombstones || {})) {
+          if (!tombs[id] || tombs[id] < t) tombs[id] = t;
+        }
+        saveTombs();
+        const merged = { ...appSettings, ...remoteSettings, mediaRoots: appSettings.mediaRoots };
         if (JSON.stringify(merged) !== JSON.stringify(appSettings)) {
           appSettings = merged;
           window.hikari.saveSettings(appSettings).catch(() => {});
         }
-        localStorage.setItem(K('setH'), hash(stableStringify(cloudSettings())));
+        localStorage.setItem(K('setH'), hash(stableStringify({ ...cloudSettings(), tombstones: tombs })));
+      }
+
+      /* A row we hold that the cloud does not is a deletion ONLY if somebody
+         tombstoned it. Otherwise the cloud is the one missing data — most
+         likely because an out-of-date device pushed a delete — so put it
+         back rather than destroying our copy. */
+      const missing = library.filter((r) => Number.isFinite(Number(r.id)) && !remoteIds.has(Number(r.id)));
+      const deleted = missing.filter((r) => tombs[r.id]);
+      const orphaned = missing.filter((r) => !tombs[r.id]);
+      for (const r of deleted) if (applyRemoteDelete(Number(r.id))) applied++;
+      for (const id of Object.keys(meta).map(Number)) {
+        if (!remoteIds.has(id) && tombs[id]) { delete meta[id]; }
+      }
+      if (orphaned.length) {
+        console.warn(`[sync] ${orphaned.length} local record(s) absent from the cloud and not deleted — re-uploading`);
+        for (const r of orphaned) delete meta[r.id];   // clear the hash so the push re-sends them
+        saveMeta();
+        schedulePush();
       }
 
       online = true;
@@ -400,6 +458,7 @@
   /* —— lifecycle ———————————————————————————————— */
   function start() {
     loadMeta();
+    loadTombs();
     subscribe();
     syncPill('busy');
     fillTab();
@@ -411,7 +470,7 @@
     unsubscribe();
     clearInterval(pullTimer);
     clearTimeout(pushTimer);
-    user = null; meta = {};
+    user = null; meta = {}; tombs = {};
     syncPill(); fillTab();
   }
 
@@ -451,5 +510,5 @@
     }
   });
 
-  window.syncUI = { fill: fillTab, push: () => pushChanges(), pull: () => pullChanges(), state: () => ({ user: user?.email, online, meta: Object.keys(meta).length }) };
+  window.syncUI = { fill: fillTab, push: () => pushChanges(), pull: () => pullChanges(), deleted: markDeleted, state: () => ({ user: user?.email, online, meta: Object.keys(meta).length }) };
 })();

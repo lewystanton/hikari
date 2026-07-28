@@ -18,6 +18,8 @@ const PATTERNS = [
   /^Hikari-Setup-\d+\.\d+\.\d+\.exe$/,
   /^Hikari-Setup-\d+\.\d+\.\d+\.exe\.blockmap$/,
   /^Hikari-Setup-\d+\.\d+\.\d+\.__uninstaller\.exe$/,
+  /^Hikari-\d+\.\d+\.\d+(-arm64)?\.dmg$/,          // macOS build
+  /^Hikari-\d+\.\d+\.\d+(-arm64)?\.dmg\.blockmap$/,
   ...(ALSO_APKS ? [/^Hikari-Mobile-\d+\.\d+\.\d+\.apk$/] : [])
 ];
 

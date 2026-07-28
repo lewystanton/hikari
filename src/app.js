@@ -1402,6 +1402,7 @@ function markAllSeasons(root, watch) {
 }
 
 function removeGroup(ids) {
+  window.syncUI?.deleted?.(ids);
   library = library.filter((x) => !ids.includes(x.id));
   persist();
   renderShelf();
@@ -1643,6 +1644,7 @@ function consolidateLibrary() {
       root.peek = root.peek || {};
       root.peek[m.id] = slimRecord(m);
       peekCache.set(m.id, root.peek[m.id]);
+      window.syncUI?.deleted?.([m.id]);
       library.splice(library.indexOf(m), 1);
       changed = true;
     }
@@ -5342,6 +5344,7 @@ document.addEventListener('click', async (e) => {
       const s = library.find((x) => x.id === detailId);
       const ids = s ? groupMemberIds(s) : [detailId];
       if (el.dataset.armed) {
+        window.syncUI?.deleted?.(ids);
         library = library.filter((x) => !ids.includes(x.id));
         persist();
         goShelf();
@@ -5361,6 +5364,7 @@ document.addEventListener('click', async (e) => {
       const ids = (el.dataset.group || '').split(',').map(Number).filter(Boolean);
       if (!ids.length) break;
       if (el.dataset.armed) {
+        window.syncUI?.deleted?.(ids);
         library = library.filter((x) => !ids.includes(x.id));
         persist();
         renderShelf();

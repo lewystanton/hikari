@@ -75,6 +75,7 @@ function unionWatched(a = {}, b = {}) {
 async function loadCache() {
   state.library = (await kvGet(`lib.${state.user.id}`)) || [];
   state.meta = (await kvGet(`meta.${state.user.id}`)) || {};
+  state.tombs = (await kvGet(`tomb.${state.user.id}`)) || {};
   state.lastSync = (await kvGet(`last.${state.user.id}`)) || 0;
   /* keys are cached so artwork still works on a cold, offline start */
   cloudSettings = (await kvGet(`set.${state.user.id}`)) || {};
@@ -83,6 +84,7 @@ async function loadCache() {
 async function saveCache() {
   await kvSet(`lib.${state.user.id}`, state.library);
   await kvSet(`meta.${state.user.id}`, state.meta);
+  await kvSet(`tomb.${state.user.id}`, state.tombs || {});
   await kvSet(`last.${state.user.id}`, state.lastSync);
   await kvSet(`set.${state.user.id}`, cloudSettings);
 }
@@ -130,19 +132,29 @@ export async function pull() {
         if (applyRemote(row.media_id, row.record, row.updated_at)) applied++;
       }
     }
-    for (const id of Object.keys(state.meta).map(Number)) {
-      if (!remoteIds.has(id)) {
-        const idx = state.library.findIndex((r) => r.id === id);
-        if (idx >= 0) { state.library.splice(idx, 1); applied++; }
-        delete state.meta[id];
-      }
-    }
+    /* Deferred until the settings row is read below — it carries the
+       tombstone list, and without it a row missing from the cloud is
+       indistinguishable from a cloud that has lost data. */
     /* settings row — the account's shared preferences. API keys can be set
        from EITHER app; the remote-play address is written by whichever
        desktop is publishing one. */
     const { data: srow } = await supa.from('settings')
       .select('data').eq('user_id', state.user.id).maybeSingle();
     cloudSettings = srow?.data || {};
+    state.tombs = state.tombs || {};
+    for (const [id, t] of Object.entries(cloudSettings.tombstones || {})) {
+      if (!state.tombs[id] || state.tombs[id] < t) state.tombs[id] = t;
+    }
+    /* A row we hold that the cloud lacks is a deletion only if it was
+       tombstoned. Otherwise the cloud is missing data and we keep ours —
+       the desktop re-uploads it on its next pass. */
+    for (const id of Object.keys(state.meta).map(Number)) {
+      if (remoteIds.has(id)) continue;
+      if (!state.tombs[id]) continue;
+      const idx = state.library.findIndex((r) => r.id === id);
+      if (idx >= 0) { state.library.splice(idx, 1); applied++; }
+      delete state.meta[id];
+    }
     for (const k of KEY_FIELDS) {
       if ((cloudSettings[k] || '') !== (state.keys[k] || '')) state.keys[k] = cloudSettings[k] || '';
     }
@@ -174,6 +186,10 @@ export async function removeShow(ids) {
   const { error } = await supa.from('library').delete()
     .eq('user_id', state.user.id).in('media_id', ids);
   if (error) throw error;
+  const now = Date.now();
+  state.tombs = state.tombs || {};
+  for (const id of ids) state.tombs[id] = now;
+  await publishTombstones();
   state.library = state.library.filter((r) => !ids.includes(r.id));
   for (const id of ids) delete state.meta[id];
   state.lastSync = Date.now();
@@ -256,6 +272,32 @@ export async function addShow(rec) {
    address), so writing `state.keys` wholesale would silently delete all of
    it. Re-read first so a key set on the desktop a moment ago isn't clobbered
    by a stale copy. */
+/* Deletions have to travel as data, not as an absent row — see the note in
+   pull(). The settings row is the one thing both apps already read and merge,
+   so the tombstone list rides there rather than needing a new table. */
+const TOMB_CAP = 800;
+async function publishTombstones() {
+  const ids = Object.keys(state.tombs || {})
+    .sort((a, b) => state.tombs[b] - state.tombs[a]).slice(0, TOMB_CAP);
+  state.tombs = Object.fromEntries(ids.map((id) => [id, state.tombs[id]]));
+  try {
+    const { data: srow } = await supa.from('settings')
+      .select('data').eq('user_id', state.user.id).maybeSingle();
+    const merged = { ...(srow?.data || {}) };
+    const both = { ...(merged.tombstones || {}) };
+    for (const [id, t] of Object.entries(state.tombs)) {
+      if (!both[id] || both[id] < t) both[id] = t;
+    }
+    merged.tombstones = both;
+    state.tombs = both;
+    await supa.from('settings')
+      .upsert({ user_id: state.user.id, data: merged, updated_at: new Date().toISOString() });
+    cloudSettings = merged;
+  } catch (e) {
+    console.warn('[tombstones]', e.message || e);   // retried on the next delete
+  }
+}
+
 export async function saveKeys(next) {
   const { data: srow } = await supa.from('settings')
     .select('data').eq('user_id', state.user.id).maybeSingle();
