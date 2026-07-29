@@ -2068,3 +2068,50 @@ h1.display em{font-style:normal;color:var(--muted)}
 @media (prefers-reduced-motion: reduce){
   .bb-slide{transition:none}
 }
+
+/* ——— signed-out banner ———
+   The desktop deliberately runs without an account, so this appears only
+   when a machine that HAS synced can no longer reach the account. Docked
+   bottom-centre: the top edge is the drag region and the shelf hero, and a
+   warning that shifts page layout gets dismissed reflexively. */
+#sync-banner{
+  position:fixed; left:calc(50% + var(--rail) / 2); bottom:calc(var(--status) + 14px);
+  transform:translateX(-50%);           /* centre on the content, not the viewport */
+  z-index:900; display:flex; align-items:center; gap:12px;
+  max-width:min(760px, calc(100vw - 48px)); padding:11px 12px 11px 14px;
+  border-radius:12px; border:1px solid color-mix(in srgb, var(--danger) 42%, transparent);
+  background:color-mix(in srgb, var(--danger) 13%, var(--bg-2));
+  backdrop-filter:blur(18px) saturate(1.3);
+  box-shadow:0 12px 34px rgba(0,0,0,.42);
+  font-size:13px; line-height:1.45;
+  animation:sync-banner-in .34s cubic-bezier(.2,.9,.25,1) both;
+}
+@keyframes sync-banner-in{
+  from{opacity:0; transform:translateX(-50%) translateY(10px)}
+  to{opacity:1; transform:translateX(-50%) translateY(0)}
+}
+#sync-banner .sb-i{
+  flex:0 0 auto; width:19px; height:19px; border-radius:50%;
+  display:grid; place-items:center;
+  background:var(--danger); color:#fff; font-weight:700; font-size:12px;
+}
+#sync-banner .sb-m{flex:1 1 auto; min-width:0; color:var(--ink)}
+#sync-banner .sb-m b{color:var(--danger)}
+#sync-banner .sb-go{
+  flex:0 0 auto; padding:6px 13px; border-radius:8px; cursor:pointer;
+  border:1px solid color-mix(in srgb, var(--danger) 55%, transparent);
+  background:color-mix(in srgb, var(--danger) 22%, transparent);
+  color:var(--ink); font-size:12.5px; font-weight:600;
+  transition:background .16s ease, border-color .16s ease;
+}
+#sync-banner .sb-go:hover{background:var(--danger); border-color:var(--danger); color:#fff}
+#sync-banner .sb-x{
+  flex:0 0 auto; width:24px; height:24px; border-radius:6px; cursor:pointer;
+  border:0; background:transparent; color:var(--muted);
+  font-size:17px; line-height:1; transition:background .16s ease, color .16s ease;
+}
+#sync-banner .sb-x:hover{background:rgba(255,255,255,.09); color:var(--ink)}
+@media (max-width:720px){
+  #sync-banner{flex-wrap:wrap; gap:8px}
+  #sync-banner .sb-m{flex:1 1 100%; order:2}
+}

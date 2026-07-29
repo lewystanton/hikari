@@ -47,8 +47,25 @@
      no way to look up how long this machine has been adrift. Remember the
      account separately for exactly that. */
   const ACCT = 'hikariSync.lastAccount';
-  const lastAccount = () => localStorage.getItem(ACCT) || '';
   const lastSyncFor = (uid) => Number(localStorage.getItem(`hikariSync.last.${uid || 'anon'}`) || 0);
+  /* Machines that synced before this key existed still have their per-account
+     `hikariSync.last.<uid>` entries, so recover the account from those rather
+     than treating an upgraded install as one that never signed in — otherwise
+     the warning below stays invisible on exactly the machines that need it. */
+  function lastAccount() {
+    const known = localStorage.getItem(ACCT);
+    if (known) return known;
+    let best = '', bestT = 0;
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i) || '';
+      const m = k.match(/^hikariSync\.last\.([0-9a-f-]{36})$/);
+      if (!m) continue;
+      const t = Number(localStorage.getItem(k) || 0);
+      if (t > bestT) { bestT = t; best = m[1]; }
+    }
+    if (best) localStorage.setItem(ACCT, best);
+    return best;
+  }
 
   /* —— tombstones ————————————————————————————————
      A row missing from the cloud used to mean "deleted, remove it locally",
@@ -422,8 +439,10 @@
       txt.textContent = hrs >= 24 ? `NOT SYNCING — ${Math.floor(hrs / 24)}d BEHIND`
         : hrs >= 1 ? `NOT SYNCING — ${hrs}h BEHIND` : 'NOT SYNCING';
       pill.title = 'Signed out of your account — open Settings to sign back in';
+      sessionBanner();
       return;
     }
+    sessionBanner();
     pill.hidden = false;
     pill.classList.toggle('warn', !online);
     if (state === 'busy') txt.textContent = 'SYNCING…';
@@ -433,6 +452,34 @@
       const t = lastSyncAt();
       txt.textContent = t ? `SYNCED ${new Date(t).toTimeString().slice(0, 5)}` : 'SYNCED';
     }
+  }
+
+  /* —— signed-out banner ————————————————————————
+     Unlike the phone, this app does not gate on sign-in: the library lives
+     on disk and working offline is legitimate. That makes a DEAD session
+     indistinguishable from a deliberate one, which is how 36 hours of
+     additions quietly failed to reach the account. So warn only in the case
+     that is actually a fault — a machine that has synced before and now
+     cannot — and keep it dismissible, because offline is still allowed. */
+  let bannerOff = false;
+  function sessionBanner() {
+    const stale = !user && !!lastSyncFor(lastAccount());
+    let el = document.getElementById('sync-banner');
+    if (!stale || bannerOff) { el?.remove(); return; }
+    if (el) return;
+    const when = new Date(lastSyncFor(lastAccount()));
+    const hrs = Math.floor((Date.now() - when.getTime()) / 3600000);
+    const ago = hrs >= 24 ? `${Math.floor(hrs / 24)} day${hrs >= 48 ? 's' : ''}`
+      : hrs >= 1 ? `${hrs} hour${hrs > 1 ? 's' : ''}` : 'a few minutes';
+    el = document.createElement('div');
+    el.id = 'sync-banner';
+    el.innerHTML = `<span class="sb-i">!</span>
+      <span class="sb-m"><b>Not syncing.</b> You're signed out of your account —
+      nothing has reached your other devices for ${esc(ago)}
+      (last sync ${esc(when.toLocaleString())}).</span>
+      <button class="sb-go" data-action="sync-banner-signin">Sign in</button>
+      <button class="sb-x" data-action="sync-banner-hide" aria-label="Dismiss">&times;</button>`;
+    document.body.appendChild(el);
   }
 
   /* —— settings tab ————————————————————————————— */
@@ -510,6 +557,10 @@
   (async () => {
     const { data } = await supa.auth.getSession().catch(() => ({ data: null }));
     if (data?.session) return;                       // healthy, or genuinely signed out
+    /* onAuthStateChange returns early when the session is null and `user` is
+       already null — the common no-session boot — so nothing else paints the
+       signed-out state. Do it here. */
+    syncPill();
     if (!lastAccount()) return;                      // never signed in on this machine
     try {
       const { error } = await supa.auth.refreshSession();
@@ -542,6 +593,16 @@
     const btn = e.target.closest('[data-action]');
     if (!btn) return;
     switch (btn.dataset.action) {
+      case 'sync-banner-hide':
+        bannerOff = true;                 // this run only — a restart warns again
+        document.getElementById('sync-banner')?.remove();
+        break;
+      case 'sync-banner-signin':
+        document.getElementById('sync-banner')?.remove();
+        openSettings();
+        document.querySelector('.set-tab[data-tab="sync"]')?.click();
+        document.getElementById('syncEmail')?.focus();
+        break;
       case 'sync-signin': doAuth('in'); break;
       case 'sync-signup': doAuth('up'); break;
       case 'sync-signout':
