@@ -385,5 +385,15 @@ export async function initAuth(onUser) {
     }
   });
   const { data } = await supa.auth.getSession();
-  if (!data.session) onUser(false);
+  if (data.session) return;
+  /* An expired token is not the same as being signed out: autoRefreshToken
+     only refreshes a session already in hand, so one that lapsed while the
+     app was closed leaves every push and pull no-oping in silence. The
+     desktop sat like that for a day and a half. Try once before giving up. */
+  try {
+    const { error } = await supa.auth.refreshSession();
+    if (error) throw error;
+  } catch {
+    onUser(false);
+  }
 }

@@ -43,6 +43,13 @@
   const lastSyncAt = () => Number(localStorage.getItem(K('last')) || 0);
   const stampSync = () => { localStorage.setItem(K('last'), String(Date.now())); syncPill(); };
 
+  /* `K()` is keyed on the signed-in user, so once the session dies there is
+     no way to look up how long this machine has been adrift. Remember the
+     account separately for exactly that. */
+  const ACCT = 'hikariSync.lastAccount';
+  const lastAccount = () => localStorage.getItem(ACCT) || '';
+  const lastSyncFor = (uid) => Number(localStorage.getItem(`hikariSync.last.${uid || 'anon'}`) || 0);
+
   /* —— tombstones ————————————————————————————————
      A row missing from the cloud used to mean "deleted, remove it locally",
      and a record missing from `library` used to mean "deleted, remove it
@@ -401,7 +408,22 @@
     const pill = document.getElementById('sb-sync');
     const txt = document.getElementById('sb-sync-txt');
     if (!pill) return;
-    if (!user) { pill.hidden = true; return; }
+    /* A dead session used to hide this pill outright, so the app looked
+       exactly like a healthy signed-out one while quietly not syncing —
+       an expired token went unnoticed for a day and a half that way, and
+       36 hours of additions never reached the account. If this machine has
+       ever synced, say so loudly instead of going quiet. */
+    if (!user) {
+      const t = lastSyncFor(lastAccount());
+      if (!t) { pill.hidden = true; return; }        // never synced: nothing to warn about
+      pill.hidden = false;
+      pill.classList.add('warn');
+      const hrs = Math.floor((Date.now() - t) / 3600000);
+      txt.textContent = hrs >= 24 ? `NOT SYNCING — ${Math.floor(hrs / 24)}d BEHIND`
+        : hrs >= 1 ? `NOT SYNCING — ${hrs}h BEHIND` : 'NOT SYNCING';
+      pill.title = 'Signed out of your account — open Settings to sign back in';
+      return;
+    }
     pill.hidden = false;
     pill.classList.toggle('warn', !online);
     if (state === 'busy') txt.textContent = 'SYNCING…';
@@ -478,8 +500,32 @@
     const next = session?.user || null;
     if (next?.id === user?.id) { user = next; return; }
     user = next;
-    if (user) start(); else stop();
+    if (user) { localStorage.setItem(ACCT, user.id); start(); } else stop();
   });
+
+  /* Recover an expired session rather than sitting silently signed out.
+     autoRefreshToken only refreshes a session the client is already
+     holding; if the token expired while the app was closed, nothing
+     retries it and every push/pull no-ops forever. */
+  (async () => {
+    const { data } = await supa.auth.getSession().catch(() => ({ data: null }));
+    if (data?.session) return;                       // healthy, or genuinely signed out
+    if (!lastAccount()) return;                      // never signed in on this machine
+    try {
+      const { error } = await supa.auth.refreshSession();
+      if (error) throw error;
+      console.info('[sync] expired session refreshed');
+    } catch (e) {
+      console.warn('[sync] session could not be refreshed:', e.message || e);
+      syncPill();
+      const behind = Date.now() - lastSyncFor(lastAccount());
+      if (behind > 6 * 3600 * 1000) {
+        toast('Signed out of your account — nothing has synced since ' +
+          new Date(lastSyncFor(lastAccount())).toLocaleString() +
+          '. Sign in from Settings to catch up.', 'err');
+      }
+    }
+  })();
 
   /* hook persist(): any library mutation schedules a push */
   const _persist = persist;
