@@ -609,6 +609,13 @@ function watchRowHTML(g, cur, rec) {
 
 function watchOrderHTML(g, curSeason) {
   const fr = g.rep.franchise || [];
+  /* The franchise graph now arrives after this page opens, so stand something
+     in for it — an added show with no seasons reads as a failed add. */
+  if (enriching.has(g.rep.id) && fr.length < 2) {
+    return `<section class="dsec"><h2 class="sec-t">Watch order <span class="sec-sub">loading…</span></h2>
+      <div class="hrail worail woskel">${Array.from({ length: 4 }, () => `
+        <div class="skelc"><div class="skelc-cov"></div><div class="skelc-l"></div><div class="skelc-l s"></div></div>`).join('')}</div></section>`;
+  }
   if (fr.length < 2) return '';
   const vs = viewables(g);
   const cards = fr.map((f, i) => {
@@ -2658,7 +2665,8 @@ document.addEventListener('click', async (e) => {
       b.classList.add('busy');
       try {
         const rec = await buildRecord(id);
-        try { const fr = await fetchFranchise(id); rec.franchise = fr; rec.frv = FRV_RELATIONS; } catch { /* lite is fine */ }
+        /* the franchise walk is many requests through a 30/min limiter —
+           enrichAdded() does it in the background with a card loader */
         await addShow(rec);
         buzz();
         toast(`${rec.title} added`);
@@ -2765,9 +2773,11 @@ document.addEventListener('click', async (e) => {
         let swapped = false;
         const wholeFranchise = b.dataset.act === 'sheet-add-fr';
         try {
-          const fr = await fetchFranchise(rec.id);
           /* Resolve to season 1 only when the franchise was asked for —
-             sometimes you really do want just this entry. */
+             sometimes you really do want just this entry. Only THAT needs
+             the graph before the record exists; otherwise it lands later,
+             in the background, and the page opens straight away. */
+          const fr = wholeFranchise ? await fetchFranchise(rec.id) : [];
           const primary = wholeFranchise ? franchisePrimary(fr) : null;
           if (primary && primary.id !== rec.id) {
             const owned = state.library.find((r) => r.id === primary.id);
@@ -2780,8 +2790,7 @@ document.addEventListener('click', async (e) => {
             rec = await buildRecord(primary.id);
             swapped = true;
           }
-          rec.franchise = fr;
-          rec.frv = FRV_RELATIONS;
+          if (fr.length) { rec.franchise = fr; rec.frv = FRV_RELATIONS; }
         } catch { /* no franchise: add exactly what was picked */ }
         await addShow(rec);
         buzz();

@@ -2409,6 +2409,17 @@ function relRailHTML(title, items, currentId, tagFn) {
 /* the whole franchise as one numbered, chronological watch order —
    fetchFranchise already sorts by air date, so index order IS the order */
 function watchOrderHTML(fr, root, s) {
+  /* The franchise graph now lands after the page opens, so say the section
+     is coming rather than letting it pop in unannounced — an add that shows
+     no seasons reads as an add that failed. */
+  if (root.enriching) {
+    return `
+  <div class="dsec">
+    <h3 class="sh">Watch order <span class="cnt">LOADING SEASONS…</span></h3>
+    <div class="wo-skel">${Array.from({ length: 5 }, () => `
+      <div class="skel-card"><div class="skel-cover"></div><div class="skel-line"></div><div class="skel-line short"></div></div>`).join('')}</div>
+  </div>`;
+  }
   if (!fr || fr.length < 2) return '';
   return `
   <div class="dsec">
@@ -3079,6 +3090,29 @@ async function addById(mediaId) {
    picking one and being dropped into season 4 of a show you meant to start is
    the wrong outcome. The walk isn't wasted work either — the record needs a
    franchise regardless, so this only moves it earlier. */
+/* Finish an add after the detail page is already open: pull the franchise
+   graph, fold it in, and repaint if the user is still looking at it. Failure
+   is not fatal — the record is a perfectly good single show without it, and
+   the next refresh will try again. */
+async function fillFranchiseLater(recordId) {
+  try {
+    const franchise = await fetchFranchise(recordId);
+    const rec = library.find((x) => x.id === recordId);
+    if (!rec) return;                                   // removed while we waited
+    if (franchise.length) { rec.franchise = franchise; rec.frv = 2; }
+    delete rec.enriching;
+    consolidateLibrary();
+    persist();
+  } catch {
+    const rec = library.find((x) => x.id === recordId);
+    if (rec) { delete rec.enriching; persist(); }
+  }
+  const active = document.querySelector('.screen.active')?.id;
+  if (active === 'screen-detail' && detailId === recordId) renderDetail();
+  else if (active === 'screen-shelf') renderShelf();
+  updateChrome();
+}
+
 async function addByIdFast(mediaId, { wholeFranchise = false } = {}) {
   const existing = library.find((x) => x.id === mediaId);
   if (existing) return existing;
@@ -3087,29 +3121,38 @@ async function addByIdFast(mediaId, { wholeFranchise = false } = {}) {
 
   let id = mediaId;
   let franchise = [];
-  try {
-    franchise = await fetchFranchise(mediaId);
-    /* Only resolve to season 1 when the whole franchise was asked for.
-       Silently swapping the pick for its earliest sibling fixes the "I meant
-       Fate/stay night" case but breaks the opposite one — sometimes you
-       really do want Unlimited Blade Works and nothing else. The choice is
-       now made at the search row, where the intent actually is. */
-    if (wholeFranchise) {
+
+  /* fetchFranchise walks the relation graph, and every hop is a request
+     through a 30/min limiter — for something like Fate or Gundam that is
+     most of a minute before anything appears on screen. It is only needed
+     up-front when the whole franchise was asked for, because that is what
+     decides WHICH record to create. For a single show it can finish after
+     the page is already open. */
+  if (wholeFranchise) {
+    try {
+      franchise = await fetchFranchise(mediaId);
+      /* Only resolve to season 1 when the whole franchise was asked for.
+         Silently swapping the pick for its earliest sibling fixes the "I meant
+         Fate/stay night" case but breaks the opposite one — sometimes you
+         really do want Unlimited Blade Works and nothing else. The choice is
+         now made at the search row, where the intent actually is. */
       const primary = franchisePrimary(franchise);
       if (primary && primary.id !== mediaId) {
         const owned = library.find((x) => x.id === primary.id);
         if (owned) return owned;
         id = primary.id;
       }
-    }
-  } catch { /* no franchise: add exactly what was asked for */ }
+    } catch { /* no franchise: add exactly what was asked for */ }
+  }
 
   const record = await enrichShowBase(id);
   if (franchise.length) { record.franchise = franchise; record.frv = 2; }
+  else record.enriching = 1;                 // seasons still on their way
   autoAdoptSources(record);
   library.push(record);
   consolidateLibrary();
   persist();
+  if (record.enriching) fillFranchiseLater(record.id);
   if (id !== mediaId) toast(`Added ${record.title} — every season is in its watch order`);
   return library.find((x) => franchiseIds(x).has(id)) || record;
 }

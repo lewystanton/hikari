@@ -1156,3 +1156,26 @@ h1,h2,h3{font-weight:800;letter-spacing:-.02em;font-family:var(--font-display)}
 @media (prefers-reduced-motion: reduce){
   .fill-dot,.card-load i{animation:none}
 }
+
+/* ——— add-in-progress skeletons ———
+   The franchise walk is many requests through a 30/min limiter, so the show
+   page opens first and these stand in for the sections still arriving. */
+.woskel{gap:12px}
+.skelc{flex:0 0 116px}
+.skelc-cov{width:100%; aspect-ratio:2/3; border-radius:10px; margin-bottom:8px}
+.skelc-l{height:10px; border-radius:5px; margin-bottom:5px}
+.skelc-l.s{width:55%}
+.skelc-cov, .skelc-l{
+  background:linear-gradient(100deg, rgba(255,255,255,.05) 30%,
+    rgba(255,255,255,.11) 48%, rgba(255,255,255,.05) 66%);
+  background-size:280% 100%;
+  animation:skelc-slide 1.5s ease-in-out infinite;
+}
+@keyframes skelc-slide{from{background-position:180% 0} to{background-position:-80% 0}}
+@media (prefers-reduced-motion:reduce){
+  .skelc-cov, .skelc-l{animation:none; background:rgba(255,255,255,.06)}
+}
+.sec-t .sec-sub{
+  margin-left:8px; font-size:11px; font-weight:600; letter-spacing:.08em;
+  text-transform:uppercase; color:rgba(255,255,255,.42); vertical-align:middle;
+}
