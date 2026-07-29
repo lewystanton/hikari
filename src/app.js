@@ -3584,7 +3584,9 @@ async function openArtModal(rootId) {
     if (note) note.hidden = false;
     try {
       const ids = [root.id, ...(root.franchise || []).map((f) => f.id)];
-      const pool = await fetchArtPool(ids, root.idMal, keys);
+      /* the user is sitting in front of the picker waiting — do not let this
+         queue behind a background franchise crawl */
+      const pool = await fetchArtPool(ids, root.idMal, keys, { bg: false });
       pool.stamp = stamp;
       root.artPool = pool;
       persist();

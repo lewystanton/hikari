@@ -529,24 +529,47 @@ async function fetchFanartImages(malId, key) {
   return out;
 }
 
-async function fetchArtPool(anilistIds, malId, keys = {}) {
-  const covers = [], banners = [];
+/* Every provider used to be awaited in turn — TMDB, then fanart, then
+   AniList, then a serial Jikan loop that sleeps 500ms between ids and 1200ms
+   between retries, then Kitsu, then TVDB. Worst case that is well over ten
+   seconds of which most is waiting on nothing, and Jikan /pictures 504s on a
+   cold cache so its retries stall on connection timeouts.
 
-  if (keys.tmdb) {
-    const t = await fetchTmdbImages(malId, keys.tmdb);
-    covers.push(...t.covers);
-    banners.push(...t.banners);
-  }
-  if (keys.fanart) {
-    const f = await fetchFanartImages(malId, keys.fanart);
-    covers.push(...f.covers);
-    banners.push(...f.banners);
-  }
+   They are independent, so run them together. Only Jikan depends on another
+   (it needs MAL ids from the AniList query), so it chains off that one.
+   Results are reassembled in the original provider order because position in
+   `covers`/`banners` IS the preference order — artPool.banners[0] becomes the
+   hero. Anything that fails or times out contributes nothing. */
+const ART_TIMEOUT = 8000;
+function artTimeout(ms = ART_TIMEOUT) {
+  return typeof AbortSignal?.timeout === 'function' ? AbortSignal.timeout(ms) : undefined;
+}
+/* a provider that hangs must not hold up the ones that answered */
+function capped(promise, ms = ART_TIMEOUT + 4000) {
+  return Promise.race([
+    promise,
+    new Promise((res) => setTimeout(() => res({ covers: [], banners: [] }), ms))
+  ]).catch(() => ({ covers: [], banners: [] }));
+}
 
-  try {
+/* `bg` is the difference between a sweep nobody is watching and one the user
+   just asked for. Measured on Slime: every provider answers in under 220ms
+   on its own, but the AniList leg runs through the rate limiter, so when a
+   franchise crawl is already queued it lands 12s later and Promise.all makes
+   the other five wait for it. User-initiated sweeps jump that queue. */
+async function fetchArtPool(anilistIds, malId, keys = {}, { bg = true } = {}) {
+  const empty = { covers: [], banners: [] };
+
+  const pTmdb = keys.tmdb ? capped(fetchTmdbImages(malId, keys.tmdb)) : Promise.resolve(empty);
+  const pFanart = keys.fanart ? capped(fetchFanartImages(malId, keys.fanart)) : Promise.resolve(empty);
+
+  /* AniList first, then Jikan off the MAL ids it returns */
+  const pAniAndJikan = capped((async () => {
+    const covers = [], banners = [];
+    const jikanCovers = [];
     const d = await gql(
       'query($ids:[Int]){Page(perPage:50){media(id_in:$ids,type:ANIME){id idMal coverImage{extraLarge large} bannerImage}}}',
-      { ids: anilistIds.slice(0, 50) }, { bg: true }
+      { ids: anilistIds.slice(0, 50) }, { bg }
     );
     const media = d.Page.media || [];
     for (const m of media) {
@@ -554,36 +577,38 @@ async function fetchArtPool(anilistIds, malId, keys = {}) {
       if (c) covers.push(c);
       if (m.bannerImage) banners.push(m.bannerImage);
     }
-    const malIds = media.map((m) => m.idMal).filter(Boolean).slice(0, 5);
-    for (const id of malIds) {
-      /* Jikan /pictures 504s on cold cache — one retry usually lands */
-      for (let attempt = 0; attempt < 2; attempt++) {
-        try {
-          const res = await fetch(`https://api.jikan.moe/v4/anime/${id}/pictures`);
-          if (res.ok) {
-            const j = await res.json();
-            for (const p of j.data || []) {
-              const u = p.jpg?.large_image_url || p.jpg?.image_url;
-              if (u) covers.push(u);
-            }
-            break;
-          }
-        } catch { /* retry below */ }
-        await jsleep(1200);
-      }
-      await jsleep(500);
-    }
-  } catch { /* pool stays partial */ }
+    /* Jikan allows 3/sec. Three at a time with a hard timeout beats five in
+       series with sleeps between them, and a 504 now costs 8s once rather
+       than a connection timeout plus a 1200ms backoff plus a retry. */
+    const malIds = media.map((m) => m.idMal).filter(Boolean).slice(0, 3);
+    await Promise.all(malIds.map(async (id) => {
+      try {
+        const res = await fetch(`https://api.jikan.moe/v4/anime/${id}/pictures`,
+          { signal: artTimeout() });
+        if (!res.ok) return;
+        const j = await res.json();
+        for (const p of j.data || []) {
+          const u = p.jpg?.large_image_url || p.jpg?.image_url;
+          if (u) jikanCovers.push(u);
+        }
+      } catch { /* one provider short */ }
+    }));
+    return { covers: [...covers, ...jikanCovers], banners };
+  })());
 
-  try {
-    const m = await fetch(`https://kitsu.io/api/edge/mappings?filter[externalSite]=myanimelist/anime&filter[externalId]=${malId}&include=item`)
-      .then((r) => (r.ok ? r.json() : null));
+  const pKitsu = capped((async () => {
+    const covers = [], banners = [];
+    const m = await fetch(
+      `https://kitsu.io/api/edge/mappings?filter[externalSite]=myanimelist/anime&filter[externalId]=${malId}&include=item`,
+      { signal: artTimeout() }).then((r) => (r.ok ? r.json() : null));
     const at = m?.included?.[0]?.attributes;
     if (at?.posterImage?.original) covers.push(at.posterImage.original);
     if (at?.coverImage?.original) banners.push(at.coverImage.original);
-  } catch { /* no kitsu art */ }
+    return { covers, banners };
+  })());
 
-  try {
+  const pTvdb = capped((async () => {
+    const covers = [], banners = [];
     const arm = await window.hikari.fetchJson(`https://arm.haglund.dev/api/v2/ids?source=myanimelist&id=${malId}`);
     if (arm?.thetvdb) {
       let show = tvdbShowCache.get(arm.thetvdb);
@@ -597,8 +622,13 @@ async function fetchArtPool(anilistIds, malId, keys = {}) {
         else if (t === 'poster') covers.push(im.url);
       }
     }
-  } catch { /* no tvdb art */ }
+    return { covers, banners };
+  })());
 
+  /* order here is the preference order, and must match the old sequence */
+  const parts = await Promise.all([pTmdb, pFanart, pAniAndJikan, pKitsu, pTvdb]);
+  const covers = parts.flatMap((p) => p?.covers || []);
+  const banners = parts.flatMap((p) => p?.banners || []);
   return { covers: [...new Set(covers)], banners: [...new Set(banners)] };
 }
 

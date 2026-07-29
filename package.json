@@ -1,7 +1,7 @@
 {
   "name": "hikari",
   "productName": "Hikari",
-  "version": "3.0.6",
+  "version": "3.0.7",
   "description": "A beautiful personal anime library",
   "main": "main.js",
   "scripts": {
