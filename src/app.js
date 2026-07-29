@@ -1644,7 +1644,9 @@ function consolidateLibrary() {
       root.peek = root.peek || {};
       root.peek[m.id] = slimRecord(m);
       peekCache.set(m.id, root.peek[m.id]);
-      window.syncUI?.deleted?.([m.id]);
+      /* NOT a deletion: the member still exists, inside root.peek. Tombstoning
+         it here broadcast "gone forever" to every device, so any show the
+         desktop had ever folded became impossible to add again anywhere. */
       library.splice(library.indexOf(m), 1);
       changed = true;
     }

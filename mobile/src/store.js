@@ -75,7 +75,13 @@ function unionWatched(a = {}, b = {}) {
 async function loadCache() {
   state.library = (await kvGet(`lib.${state.user.id}`)) || [];
   state.meta = (await kvGet(`meta.${state.user.id}`)) || {};
-  state.tombs = (await kvGet(`tomb.${state.user.id}`)) || {};
+  /* 3.0.2-3.0.4 tombstoned folded members, which were never deletions —
+     they made any consolidated show impossible to keep. Drop the set once. */
+  if ((await kvGet(`tombV.${state.user.id}`)) !== 2) {
+    state.tombs = {}; state.tombPurge = true;
+  } else {
+    state.tombs = (await kvGet(`tomb.${state.user.id}`)) || {};
+  }
   state.lastSync = (await kvGet(`last.${state.user.id}`)) || 0;
   /* keys are cached so artwork still works on a cold, offline start */
   cloudSettings = (await kvGet(`set.${state.user.id}`)) || {};
@@ -142,8 +148,15 @@ export async function pull() {
       .select('data').eq('user_id', state.user.id).maybeSingle();
     cloudSettings = srow?.data || {};
     state.tombs = state.tombs || {};
-    for (const [id, t] of Object.entries(cloudSettings.tombstones || {})) {
-      if (!state.tombs[id] || state.tombs[id] < t) state.tombs[id] = t;
+    if (state.tombPurge) {
+      /* clear the poisoned set at the source rather than only ignoring it —
+         otherwise this device ignores remote tombstones forever and real
+         deletions from the desktop would stop arriving */
+      await publishTombstones();
+    } else {
+      for (const [id, t] of Object.entries(cloudSettings.tombstones || {})) {
+        if (!state.tombs[id] || state.tombs[id] < t) state.tombs[id] = t;
+      }
     }
     /* A row we hold that the cloud lacks is a deletion only if it was
        tombstoned. Otherwise the cloud is missing data and we keep ours —
@@ -284,7 +297,7 @@ async function publishTombstones() {
     const { data: srow } = await supa.from('settings')
       .select('data').eq('user_id', state.user.id).maybeSingle();
     const merged = { ...(srow?.data || {}) };
-    const both = { ...(merged.tombstones || {}) };
+    const both = state.tombPurge ? {} : { ...(merged.tombstones || {}) };
     for (const [id, t] of Object.entries(state.tombs)) {
       if (!both[id] || both[id] < t) both[id] = t;
     }
@@ -293,6 +306,10 @@ async function publishTombstones() {
     await supa.from('settings')
       .upsert({ user_id: state.user.id, data: merged, updated_at: new Date().toISOString() });
     cloudSettings = merged;
+    if (state.tombPurge) {
+      state.tombPurge = false;
+      await kvSet(`tombV.${state.user.id}`, 2);
+    }
   } catch (e) {
     console.warn('[tombstones]', e.message || e);   // retried on the next delete
   }

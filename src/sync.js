@@ -76,8 +76,21 @@
      explicit tombstone is. They live in the settings row (already shared and
      merged by both apps) so no schema change is needed. */
   const TOMB_CAP = 800;
+  /* 3.0.2-3.0.4 tombstoned folded members, which are not deletions at all.
+     Those are now poison: they tell every device to drop shows that were
+     only consolidated. Discard the whole set once, locally and in the cloud,
+     rather than trying to tell good tombstones from bad ones. */
+  const TOMB_V = '2';
+  let tombPurge = false;
   let tombs = {};               // mediaId -> deletion timestamp (ms)
-  const loadTombs = () => { try { tombs = JSON.parse(localStorage.getItem(K('tomb'))) || {}; } catch { tombs = {}; } };
+  const loadTombs = () => {
+    if (localStorage.getItem('hikariSync.tombV') !== TOMB_V) {
+      tombs = {}; tombPurge = true;
+      try { localStorage.removeItem(K('tomb')); } catch {}
+      return;
+    }
+    try { tombs = JSON.parse(localStorage.getItem(K('tomb'))) || {}; } catch { tombs = {}; }
+  };
   const saveTombs = () => {
     const ids = Object.keys(tombs).sort((a, b) => tombs[b] - tombs[a]).slice(0, TOMB_CAP);
     tombs = Object.fromEntries(ids.map((id) => [id, tombs[id]]));
@@ -127,7 +140,14 @@
     return out;
   }
   /* returns true if the local library actually changed */
+  /* consolidateLibrary() folds duplicate seasons into their group root and
+     keeps the member as root.peek[id]. It is still in the library, just not
+     as its own record — so it must not be re-added as one, or every pull
+     would restore it and the next consolidate would fold it out again. */
+  const isPeeked = (id) => library.some((r) => r.peek && r.peek[id]);
+
   function applyRemoteRecord(mediaId, remote, updatedAt) {
+    if (isPeeked(mediaId)) { meta[mediaId] = { h: recHash(remote), t: updatedAt }; return false; }
     const idx = library.findIndex((r) => r.id === mediaId);
     const incoming = { ...remote };
     if (idx >= 0) {
@@ -238,7 +258,8 @@
       /* Only tombstoned ids may be deleted from the cloud. Anything else we
          hold a sync ledger entry for but no record is this device being out
          of date — forget the ledger entry so the next pull brings it back. */
-      const orphans = Object.keys(meta).map(Number).filter((id) => !seen.has(id));
+      const orphans = Object.keys(meta).map(Number)
+        .filter((id) => !seen.has(id) && !isPeeked(id));
       const gone = orphans.filter((id) => tombs[id]);
       const stale = orphans.filter((id) => !tombs[id]);
       if (stale.length) {
@@ -286,12 +307,17 @@
         const merged = { ...(cur?.data || {}), ...mine };
         /* tombstones are a union, never a replacement — the other device's
            deletions must survive ours */
-        const bothTombs = { ...(cur?.data?.tombstones || {}) };
+        const bothTombs = tombPurge ? {} : { ...(cur?.data?.tombstones || {}) };
         for (const [id, t] of Object.entries(tombs)) {
           if (!bothTombs[id] || bothTombs[id] < t) bothTombs[id] = t;
         }
         merged.tombstones = bothTombs;
         Object.assign(tombs, bothTombs); saveTombs();
+        if (tombPurge) {
+          tombPurge = false;
+          localStorage.setItem('hikariSync.tombV', TOMB_V);
+          console.info('[sync] cleared tombstones written by 3.0.2-3.0.4');
+        }
         for (const k of ['tmdbKey', 'fanartKey', 'traceKey']) {
           if (!mine[k] && cur?.data?.[k]) merged[k] = cur.data[k];   // don't delete theirs
         }
@@ -340,10 +366,12 @@
         .select('data').eq('user_id', user.id).maybeSingle();
       if (srow?.data) {
         const { tombstones, ...remoteSettings } = srow.data;
-        for (const [id, t] of Object.entries(tombstones || {})) {
-          if (!tombs[id] || tombs[id] < t) tombs[id] = t;
+        if (!tombPurge) {
+          for (const [id, t] of Object.entries(tombstones || {})) {
+            if (!tombs[id] || tombs[id] < t) tombs[id] = t;
+          }
+          saveTombs();
         }
-        saveTombs();
         const merged = { ...appSettings, ...remoteSettings, mediaRoots: appSettings.mediaRoots };
         if (JSON.stringify(merged) !== JSON.stringify(appSettings)) {
           appSettings = merged;
@@ -356,7 +384,8 @@
          tombstoned it. Otherwise the cloud is the one missing data — most
          likely because an out-of-date device pushed a delete — so put it
          back rather than destroying our copy. */
-      const missing = library.filter((r) => Number.isFinite(Number(r.id)) && !remoteIds.has(Number(r.id)));
+      const missing = library.filter((r) => Number.isFinite(Number(r.id))
+        && !remoteIds.has(Number(r.id)) && !isPeeked(Number(r.id)));
       const deleted = missing.filter((r) => tombs[r.id]);
       const orphaned = missing.filter((r) => !tombs[r.id]);
       for (const r of deleted) if (applyRemoteDelete(Number(r.id))) applied++;
