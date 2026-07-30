@@ -30,14 +30,14 @@
 
   const st = {
     genres: [], tags: [], formats: [], season: '', year: '', status: '',
-    minScore: 0, adult: false, sort: 'POPULARITY_DESC',
+    minScore: 0, adult: false, dubOnly: false, sort: 'POPULARITY_DESC',
     results: [], page: 0, hasNext: true, loading: false, error: null,
     vocab: null, tagQuery: '', openCats: new Set(), seq: 0, booted: false
   };
 
   const activeCount = () => st.genres.length + st.tags.length + st.formats.length
     + (st.season ? 1 : 0) + (st.year ? 1 : 0) + (st.status ? 1 : 0)
-    + (st.minScore ? 1 : 0) + (st.adult ? 1 : 0);
+    + (st.minScore ? 1 : 0) + (st.adult ? 1 : 0) + (st.dubOnly ? 1 : 0);
 
   /* —— data ——————————————————————————————————————
      Debounced, because a rapid multi-select would otherwise spend the
@@ -47,9 +47,21 @@
   function refetch(delay = 400) {
     clearTimeout(timer);
     st.results = []; st.page = 0; st.hasNext = true; st.error = null;
-    render();
+    render({ rail: true, reset: true });
     timer = setTimeout(load, delay);
   }
+
+  const hasEnglishDub = (m) =>
+    (m.characters?.edges || []).some((e) => e.voiceActors?.length);
+
+  /* AniList has no dub filter — an English dub is only knowable by asking
+     whether any character has an English voice actor, so "dubbed" can only
+     be applied to rows already fetched. That makes pages uneven: a page of
+     30 might yield 8. Keep pulling until the page is worth showing, bounded
+     so a filter with almost no matches cannot run away with the request
+     budget. */
+  const MIN_YIELD = 12;
+  const MAX_CHAIN = 4;
 
   async function load() {
     if (st.loading || !st.hasNext) return;
@@ -57,17 +69,25 @@
     st.loading = true; st.error = null;
     render();
     try {
-      const r = await browseAnime({
-        genres: st.genres, tags: st.tags, formats: st.formats,
-        season: st.season || null, year: st.year || null,
-        status: st.status || null, minScore: st.minScore || null,
-        adult: st.adult, sort: [st.sort]
-      }, st.page + 1);
-      if (seq !== st.seq) return;                    // a newer filter won
-      st.page = r.page;
-      st.hasNext = r.hasNext;
-      const seen = new Set(st.results.map((m) => m.id));
-      st.results.push(...r.media.filter((m) => !seen.has(m.id)));
+      let added = 0;
+      for (let hop = 0; hop < (st.dubOnly ? MAX_CHAIN : 1) && st.hasNext; hop++) {
+        const r = await browseAnime({
+          genres: st.genres, tags: st.tags, formats: st.formats,
+          season: st.season || null, year: st.year || null,
+          status: st.status || null, minScore: st.minScore || null,
+          adult: st.adult, sort: [st.sort]
+        }, st.page + 1);
+        if (seq !== st.seq) return;                  // a newer filter won
+        st.page = r.page;
+        st.hasNext = r.hasNext;
+        const seen = new Set(st.results.map((m) => m.id));
+        const fresh = r.media
+          .filter((m) => !seen.has(m.id))
+          .filter((m) => !st.dubOnly || hasEnglishDub(m));
+        st.results.push(...fresh);
+        added += fresh.length;
+        if (added >= MIN_YIELD) break;
+      }
     } catch (e) {
       if (seq === st.seq) st.error = e.message || String(e);
     } finally {
@@ -79,7 +99,7 @@
     if (st.vocab) return;
     try { st.vocab = await fetchFilterVocab(); }
     catch { st.vocab = { genres: [], tags: [], categories: [] }; }
-    render();
+    render({ rail: true });
   }
 
   /* —— markup ————————————————————————————————————— */
@@ -176,6 +196,13 @@
 
     <div class="bf-sec">
       <label class="bf-check">
+        <input type="checkbox" data-action="browse-dub"${st.dubOnly ? ' checked' : ''}>
+        <span>English dub only<small>Checked against each result — AniList cannot filter on it</small></span>
+      </label>
+    </div>
+
+    <div class="bf-sec">
+      <label class="bf-check">
         <input type="checkbox" data-action="browse-adult"${st.adult ? ' checked' : ''}>
         <span>Include adult titles<small>AniList hides these by default</small></span>
       </label>
@@ -201,30 +228,112 @@
     </button>`;
   }
 
-  function render() {
+  /* —— rendering ————————————————————————————————
+     Split three ways on purpose. The first cut rebuilt the whole page on
+     every event, which meant page 2 destroyed and recreated all 30 cards
+     already on screen — every one of them re-ran its entry animation, which
+     is the flicker — and every keystroke in the tag search rebuilt the rail,
+     losing its scroll position and collapsing the groups you had open. */
+
+  let drawn = 0;                     // how many results are already in the DOM
+
+  function shell() {
     const host = document.getElementById('browseHost');
-    if (!host) return;
-    const nothing = !st.loading && !st.results.length && !st.error;
-    /* innerHTML is fine here: unlike the shelf this has no runtime-only DOM
-       state to preserve, and the filter rail is rebuilt from `st` anyway */
-    host.innerHTML = `
-      <aside class="browse-rail">${filtersHTML()}</aside>
-      <div class="browse-main">
-        <div class="browse-bar">
-          <span class="bb-count">${st.results.length
-      ? `${st.results.length} shown${st.hasNext ? '' : ' — that’s all'}`
-      : st.loading ? 'Searching…' : 'Nothing yet'}</span>
-        </div>
-        ${st.error ? `<div class="browse-empty"><b>Couldn’t reach AniList</b>
-          <p>${esc(st.error)}</p>
-          <button class="btn-primary" data-action="browse-retry">Try again</button></div>` : ''}
-        ${nothing ? `<div class="browse-empty"><b>Nothing matches</b>
-          <p>Every selection narrows the results — try removing one.</p></div>` : ''}
-        <div class="browse-grid">${st.results.map(cardHTML).join('')}</div>
-        ${st.loading ? `<div class="browse-grid more">${Array.from({ length: 8 }, () =>
-        '<div class="bcard skel"><span class="bc-cover"></span><span class="bc-t"></span></div>').join('')}</div>` : ''}
-        ${!st.hasNext && st.results.length ? '<p class="browse-end">That’s everything.</p>' : ''}
-      </div>`;
+    if (!host) return null;
+    if (!host.querySelector('.browse-main')) {
+      host.innerHTML = `
+        <aside class="browse-rail"></aside>
+        <div class="browse-main">
+          <div class="browse-bar"><span class="bb-count"></span></div>
+          <div class="browse-note"></div>
+          <div class="browse-grid"></div>
+          <div class="browse-sentinel"></div>
+          <div class="browse-foot"></div>
+        </div>`;
+      /* leaving Browse destroys this markup (the shelf screen is reused by
+         every view), so the append cursor has to go back to zero or the
+         grid returns empty on the way back in */
+      drawn = 0;
+      renderRail();
+      observeSentinel();
+    }
+    return host;
+  }
+
+  /* the rail only changes when a filter or the vocabulary does */
+  function renderRail() {
+    const rail = document.querySelector('.browse-rail');
+    if (!rail) return;
+    const keepScroll = rail.scrollTop;
+    const active = document.activeElement;
+    const hadTagFocus = active?.dataset?.action === 'browse-tagq';
+    const caret = hadTagFocus ? active.selectionStart : null;
+
+    rail.innerHTML = filtersHTML();
+
+    rail.scrollTop = keepScroll;                 // do not throw them back to the top
+    if (hadTagFocus) {
+      const again = rail.querySelector('[data-action="browse-tagq"]');
+      if (again) { again.focus(); again.setSelectionRange(caret, caret); }
+    }
+  }
+
+  function renderChrome() {
+    const count = document.querySelector('.bb-count');
+    const note = document.querySelector('.browse-note');
+    const foot = document.querySelector('.browse-foot');
+    if (!count) return;
+    const shown = st.results.length;
+    count.textContent = shown
+      ? `${shown} shown${st.hasNext ? '' : ' — that’s all'}${st.dubOnly ? ' · dubbed only' : ''}`
+      : st.loading ? 'Searching…' : 'Nothing yet';
+    note.innerHTML = st.error
+      ? `<div class="browse-empty"><b>Couldn’t reach AniList</b><p>${esc(st.error)}</p>
+         <button class="btn-primary" data-action="browse-retry">Try again</button></div>`
+      : (!st.loading && !shown)
+        ? `<div class="browse-empty"><b>Nothing matches</b>
+           <p>Every selection narrows the results — try removing one.</p></div>`
+        : '';
+    foot.innerHTML = st.loading
+      ? `<div class="browse-grid more">${Array.from({ length: 8 }, () =>
+        '<div class="bcard skel"><span class="bc-cover"></span><span class="bc-t"></span></div>').join('')}</div>`
+      : (!st.hasNext && shown) ? '<p class="browse-end">That’s everything.</p>' : '';
+  }
+
+  /* append only — existing cards are never touched, so they never re-animate */
+  function renderGrid(reset = false) {
+    const grid = document.querySelector('.browse-grid');
+    if (!grid) return;
+    if (reset) { grid.innerHTML = ''; drawn = 0; }
+    if (drawn >= st.results.length) return;
+    const frag = document.createElement('template');
+    frag.innerHTML = st.results.slice(drawn).map(cardHTML).join('');
+    grid.append(...frag.content.childNodes);
+    drawn = st.results.length;
+  }
+
+  function render({ rail = false, reset = false } = {}) {
+    if (!shell()) return;
+    if (rail) renderRail();
+    renderGrid(reset);
+    renderChrome();
+  }
+
+  /* An IntersectionObserver on a sentinel below the grid, rather than a
+     scroll listener doing arithmetic on scrollHeight. The listener fired
+     against whichever element happened to be scrolling and raced its own
+     re-render, so it either never triggered or triggered repeatedly. */
+  let io = null;
+  function observeSentinel() {
+    const el = document.querySelector('.browse-sentinel');
+    if (!el) return;
+    io?.disconnect();
+    io = new IntersectionObserver((entries) => {
+      if (!entries.some((e) => e.isIntersecting)) return;
+      if (currentView !== 'browse') return;
+      load();
+    }, { rootMargin: '900px 0px' });
+    io.observe(el);
   }
 
   /* —— interaction ———————————————————————————————— */
@@ -243,12 +352,12 @@
       case 'browse-cat': {
         const c = el.dataset.cat;
         if (st.openCats.has(c)) st.openCats.delete(c); else st.openCats.add(c);
-        render();
+        render({ rail: true });
         break;
       }
       case 'browse-clear':
         Object.assign(st, { genres: [], tags: [], formats: [], season: '', year: '',
-          status: '', minScore: 0, adult: false });
+          status: '', minScore: 0, adult: false, dubOnly: false });
         refetch(0);
         break;
       case 'browse-retry': st.hasNext = true; load(); break;
@@ -268,6 +377,9 @@
     if (el.dataset.action === 'browse-set') {
       st[el.dataset.field] = el.value;
       refetch(0);
+    } else if (el.dataset.action === 'browse-dub') {
+      st.dubOnly = el.checked;
+      refetch(0);
     } else if (el.dataset.action === 'browse-adult') {
       st.adult = el.checked;
       refetch(0);
@@ -279,21 +391,8 @@
     const el = e.target.closest('[data-action="browse-tagq"]');
     if (!el) return;
     st.tagQuery = el.value;
-    const pos = el.selectionStart;
-    render();
-    const again = document.querySelector('[data-action="browse-tagq"]');
-    if (again) { again.focus(); again.setSelectionRange(pos, pos); }
+    render({ rail: true });    // renderRail keeps focus, caret and scroll
   });
-
-  /* infinite scroll, on the screen that actually scrolls */
-  function onScroll(e) {
-    const sc = e.target;
-    if (!sc.classList?.contains('screen')) return;
-    if (currentView !== 'browse') return;
-    if (st.loading || !st.hasNext || !st.results.length) return;
-    if (sc.scrollTop + sc.clientHeight >= sc.scrollHeight - 900) load();
-  }
-  document.addEventListener('scroll', onScroll, true);
 
   /* —— entry point ———————————————————————————————— */
   window.hikariBrowse = {

@@ -2390,3 +2390,6 @@ h1.display em{font-style:normal;color:var(--muted)}
   .browse-wrap{grid-template-columns:236px minmax(0,1fr)}
   .browse-main{padding:20px 18px 60px}
 }
+/* the sentinel is an invisible tripwire below the grid, not a spacer */
+.browse-sentinel{height:1px; margin:0; pointer-events:none}
+.browse-note:empty, .browse-foot:empty{display:none}

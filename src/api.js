@@ -1242,6 +1242,16 @@ query ($page: Int, $genres: [String], $tags: [String], $formats: [MediaFormat],
       description(asHtml: false)
       studios(isMain: true) { nodes { name } }
       nextAiringEpisode { episode airingAt }
+      # No dub filter exists in the API: an English dub is only knowable by
+      # asking whether any character has an English voice actor, which is why
+      # "dubbed" can only ever be applied to rows already fetched.
+      # (GraphQL comments are #, not /* */ — a block comment here 400s.)
+      # The node selection is NOT optional here. Without it AniList returns
+      # voiceActors: null for every edge, so nothing looks dubbed —
+      # verified both ways: 0/6 without node, 6/6 with it.
+      characters(perPage: 4, sort: ROLE) {
+        edges { node { id } voiceActors(language: ENGLISH) { id } }
+      }
     }
   }
 }`;
