@@ -2399,7 +2399,17 @@ function sheetMarkup() {
         <small class="gl">${(r.genres || []).slice(0, 4).map(esc).join(' · ')}</small>
       </div>
     </div>
-    <p class="sh-syn">${esc((cleanSynopsis(r.description) || '').slice(0, 420))}…</p>
+    ${(() => {
+      const syn = cleanSynopsis(r.description) || '';
+      /* the ellipsis used to be unconditional, so a two-line synopsis still
+         ended in one as though something had been cut */
+      return syn ? '<p class="sh-syn">' + esc(syn.slice(0, 420)) + (syn.length > 420 ? '…' : '') + '</p>' : '';
+    })()}
+    ${(r.tags || []).length ? '<div class="sh-tags">' + (r.tags || []).slice(0, 8).map((t) => '<span>' + esc(t) + '</span>').join('') + '</div>' : ''}
+    ${(r.streamingLinks || []).length ? '<div class="sh-avail"><span class="lbl">Available on</span>'
+      + (r.streamingLinks || []).slice(0, 6).map((l) =>
+        '<a href="' + esc(l.url) + '" target="_blank" rel="noreferrer">' + esc(l.site) + '</a>').join('')
+      + '</div>' : ''}
     <div class="sh-btns sh-adds">
       <button class="btn-solid" data-act="sheet-add" data-id="${r.id}" ${sheet.busy ? 'disabled' : ''}>
         ${sheet.busy ? 'Adding…' : `${I.plus}Add show`}</button>

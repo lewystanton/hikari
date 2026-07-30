@@ -1276,6 +1276,7 @@ async function openDiscPreview(mediaId) {
       ${because ? `<p class="dp-because">BECAUSE YOU WATCHED ${esc(because)}</p>` : ''}
       <div class="dp-actions">
         <button class="btn-primary" data-action="disc-add" data-id="${rec.id}">+ Add to shelf</button>
+        <button class="btn-ghost" data-action="disc-details" data-id="${rec.id}">Details</button>
         ${rec.siteUrl ? `<button class="btn-ghost" data-action="open-url" data-url="${esc(rec.siteUrl)}">AniList ↗</button>` : ''}
         <button class="btn-ghost" data-action="disc-close">Close</button>
       </div>
@@ -1714,8 +1715,53 @@ function prefetchArtPool(root, onDone) {
 const artDone = new Map();
 
 /* the record backing the currently viewed franchise member */
+/* ——— preview: the detail screen for a show you do not own ———
+   Search and Discover used to be add-or-nothing: the only way to see a
+   synopsis, the season list or whether there is an English dub was to put
+   the show on your shelf and take it off again. A preview record stands in
+   for the library record so the same screen can render it, with everything
+   that mutates a record hidden behind `owned`. It is never persisted and
+   never pushed — it exists for as long as you are looking at it. */
+let previewRec = null;
+/* Open the detail screen for something not on the shelf. One detail request
+   gets the page up; the franchise graph follows in the background exactly as
+   it does for a real add, so the watch order fills in behind its skeleton. */
+async function goPreview(mediaId) {
+  const owned = library.find((x) => x.id === mediaId)
+    || library.find((x) => franchiseIds(x).has(mediaId));
+  if (owned) { goDetail(owned.id); return; }          // already yours — show the real thing
+
+  if (previewRec?.id !== mediaId) {
+    previewRec = { ...(await enrichShowBase(mediaId)), enriching: 1 };
+  }
+  detailId = mediaId;
+  viewId = mediaId;
+  morphId = mediaId;
+  withTransition(() => { renderDetail(); showScreen('detail'); tagMorph(); });
+
+  /* fill the seasons in behind the loader — but only into the preview, never
+     into the library, and only if they are still looking at it */
+  const id = mediaId;
+  fetchFranchise(id).then((fr) => {
+    if (previewRec?.id !== id) return;
+    if (fr.length) { previewRec.franchise = fr; previewRec.frv = FRV_RELATIONS; }
+    delete previewRec.enriching;
+    if (detailId === id && detailScreen.classList.contains('active')) {
+      const st = detailScreen.scrollTop;
+      renderDetail();
+      detailScreen.scrollTop = st;
+    }
+  }).catch(() => {
+    if (previewRec?.id === id) delete previewRec.enriching;
+  });
+}
+
+const detailRoot = () => library.find((x) => x.id === detailId)
+  || (previewRec && previewRec.id === detailId ? previewRec : null);
+const detailOwned = () => library.some((x) => x.id === detailId);
+
 function getViewRecord() {
-  const root = library.find((x) => x.id === detailId);
+  const root = detailRoot();
   if (!root) return null;
   if (viewId === detailId) return root;
   return peekCache.get(viewId) || root;
@@ -2357,7 +2403,7 @@ function sideRailHTML(s) {
     ...(s.studios?.length ? [['Studio', s.studios.join(', ')]] : []),
     ...(s.duration ? [['Episode length', `${s.duration} min`]] : [])
   ];
-  const root = library.find((x) => x.id === detailId) || s;
+  const root = detailRoot() || s;
   return `
   ${airingCardHTML(s)}
   ${dubCardHTML(s)}
@@ -2457,7 +2503,7 @@ function watchOrderHTML(fr, root, s) {
 function epRecFor(mediaId) {
   const v = getViewRecord();
   if (v?.id === mediaId) return v;
-  const root = library.find((x) => x.id === detailId);
+  const root = detailRoot();
   if (root?.id === mediaId) return root;
   return peekCache.get(mediaId) || root;
 }
@@ -2489,7 +2535,7 @@ function openEpMenu(btn) {
 }
 
 function openEpInfo(mediaId, n) {
-  const root = library.find((x) => x.id === detailId);
+  const root = detailRoot();
   const rec = epRecFor(mediaId);
   const e = (rec?.episodesList || []).find((x) => x.number === n);
   if (!root || !e) { toast('No details for this episode yet'); return; }
@@ -2771,8 +2817,10 @@ function upgradeEpisodes(s) {
 }
 
 function renderDetail() {
-  const root = library.find((x) => x.id === detailId);
+  const root = detailRoot();
   if (!root) { goShelf(); return; }
+  const owned = detailOwned();
+  detailScreen.classList.toggle('preview', !owned);
   if (viewId !== detailId && !peekCache.has(viewId)) viewId = detailId;
   const s = getViewRecord(); // the season being viewed drives everything visual
 
@@ -2886,13 +2934,14 @@ function renderDetail() {
            real bar once the hero scrolls past, so Back and the actions are
            always reachable instead of scrolling away. -->
       <div class="d-topbar">
-        <button class="glass-btn" data-action="back">${icon('arrow-left')} Library</button>
+        <button class="glass-btn" data-action="back">${icon('arrow-left')} ${owned ? 'Library' : 'Back'}</button>
         <span class="dtb-title">${esc(s.title)}</span>
         <div class="hero-actions">
           ${s.trailer?.id ? `<button class="glass-btn" data-action="open-trailer" data-yt="${esc(s.trailer.id)}">${icon('play')} Trailer</button>` : ''}
-          <button class="glass-btn icon-only fav-btn ${root.favourite ? 'on' : ''}" data-action="toggle-fav"
+          ${owned ? `<button class="glass-btn icon-only fav-btn ${root.favourite ? 'on' : ''}" data-action="toggle-fav"
             title="${root.favourite ? 'Unfavourite' : 'Add to favourites'}">${icon(root.favourite ? 'heart-fill' : 'heart')}</button>
-          <button class="glass-btn icon-only" data-action="hero-menu" title="Options">${icon('dots-three')}</button>
+          <button class="glass-btn icon-only" data-action="hero-menu" title="Options">${icon('dots-three')}</button>`
+          : `<button class="glass-btn add-shelf" data-action="preview-add" data-id="${detailId}">${icon('plus')} Add to shelf</button>`}
         </div>
       </div>
       <div class="hero">
@@ -2928,8 +2977,7 @@ function renderDetail() {
         <div class="action-bar">
           <div class="action-row">
             ${cta ? `<button class="watch-cta" style="--brand:${esc(ctaBrand)};--brand-text:${brandText(ctaBrand)}" data-action="open-url" data-url="${esc(cta.url)}">${icon('play')} ${esc(cta.label)}</button>` : ''}
-            ${srcChips}
-            <button class="add-src" data-action="open-source-modal">+ Add source</button>
+            ${owned ? srcChips + '<button class="add-src" data-action="open-source-modal">+ Add source</button>' : ''}
           </div>
           ${officialChips ? `<div class="avail-row"><span class="lbl">Available on</span>${officialChips}</div>` : ''}
         </div>
@@ -3240,6 +3288,7 @@ function renderResults() {
         : `<span class="result-adds">
              <span class="result-badge" data-add="one" title="Add only this entry">+ SHOW</span>
              <span class="result-badge alt" data-add="all" title="Add the whole franchise, starting at season 1">+ FRANCHISE</span>
+             <span class="result-badge ghost" data-add="peek" title="Open its page without adding it">DETAILS</span>
            </span>`}
     </button>`;
   }).join('');
@@ -3310,6 +3359,11 @@ searchResults.addEventListener('click', (e) => {
   /* the row itself still adds the single show — the franchise is the
      deliberate, second click */
   const which = e.target.closest('[data-add]')?.dataset.add;
+  if (which === 'peek') {
+    const m = collapsedResults[+row.dataset.idx];
+    if (m) { closeSearch(); goPreview(m.id); }
+    return;
+  }
   pickResult(+row.dataset.idx, { wholeFranchise: which === 'all' });
 });
 
@@ -5095,6 +5149,12 @@ document.addEventListener('click', async (e) => {
       toast(root.favourite ? 'Added to favourites ♥' : 'Removed from favourites');
       break;
     }
+    case 'disc-details': {
+      const id = Number(el.dataset.id);
+      closeDiscPreview();
+      goPreview(id);
+      break;
+    }
     case 'disc-add': {
       if (el.classList.contains('busy')) break;
       el.classList.add('busy');
@@ -5296,6 +5356,24 @@ document.addEventListener('click', async (e) => {
     case 'open-art-modal': closeCardMenu(); openArtModal(detailId); break;
     case 'close-art-modal': closeArtModal(); break;
 
+    case 'preview-add': {
+      const id = Number(el.dataset.id);
+      el.classList.add('busy');
+      el.textContent = 'Adding…';
+      try {
+        const rec = await addByIdFast(id);
+        previewRec = null;              // it is a real record now
+        detailId = rec.id;
+        viewId = initialViewFor(rec.id);
+        renderDetail();
+        updateChrome();
+        toast('Added "' + rec.title + '" to your shelf');
+      } catch (err) {
+        el.classList.remove('busy');
+        toast('Could not add — ' + (err.message || err), 'err');
+      }
+      break;
+    }
     case 'jobs-pill': toggleJobsPanel(); break;
     case 'jobs-close': toggleJobsPanel(false); break;
     case 'jobs-retry': window.hikariJobs.retryFailed(); break;

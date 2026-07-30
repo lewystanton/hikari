@@ -2233,3 +2233,28 @@ h1.display em{font-style:normal;color:var(--muted)}
 }
 .jp-cand-m{color:var(--faint); font-size:10px; font-variant-numeric:tabular-nums}
 @media (max-width:860px){ .jp-cands{grid-template-columns:repeat(3, 1fr)} }
+
+/* ——— preview: the detail screen for a show you do not own ——— */
+.result-badge.ghost{
+  background:transparent; border:1px solid var(--line);
+  color:var(--muted); letter-spacing:.08em;
+}
+.result:hover .result-badge.ghost{border-color:var(--line); color:var(--ink-2)}
+.result-badge.ghost:hover{background:rgba(255,255,255,.08); color:var(--ink)}
+.glass-btn.add-shelf{
+  background:var(--ink); color:var(--bg); border-color:transparent; font-weight:650;
+}
+.glass-btn.add-shelf:hover{background:#fff}
+.glass-btn.add-shelf.busy{opacity:.6; pointer-events:none}
+/* Anything that writes to a record has no meaning on a show you do not own.
+   The template already omits the big ones; this is the safety net for
+   controls reached another way (episode ticks, the local-file affordances). */
+#screen-detail.preview .ep-check,
+#screen-detail.preview [data-action="toggle-ep"],
+#screen-detail.preview [data-action="toggle-season"],
+#screen-detail.preview [data-action="ep-upto"],
+#screen-detail.preview [data-action="ep-menu"],
+#screen-detail.preview [data-action="menu-watch-all"],
+#screen-detail.preview [data-action="organize-local"],
+/* the + on each streaming chip adopts it as one of YOUR sources */
+#screen-detail.preview [data-action="adopt-link"]{ display:none !important; }
