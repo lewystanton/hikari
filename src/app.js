@@ -1697,15 +1697,21 @@ async function fetchPoolInto(root) {
   root.artPool = pool;
   return true;
 }
-const poolAttempted = new Set();
+/* The `poolAttempted` Set this used to keep meant one failure was permanent
+   until restart — a flaky minute cost a show its artwork for the session.
+   The queue dedupes by key and retries with backoff, so that guard is gone. */
 function prefetchArtPool(root, onDone) {
   if (!appSettings.tmdbKey && !appSettings.fanartKey) return;
-  if (root.artPool?.stamp === artStamp() || poolAttempted.has(root.id)) return;
-  poolAttempted.add(root.id);
-  fetchPoolInto(root).then((changed) => {
-    if (changed) { persist(); onDone?.(); }
-  }).catch(() => { /* picker can still sweep later */ });
+  if (root.artPool?.stamp === artStamp()) return;
+  window.hikariJobs.add('art', { id: root.id }, {
+    key: `art:${root.id}`,
+    priority: 'visible',                    // on screen, but nothing is blocked on it
+    label: `Artwork · ${root.title}`
+  });
+  if (onDone) artDone.set(root.id, onDone);
 }
+/* one-shot callbacks for callers that want to repaint when their art lands */
+const artDone = new Map();
 
 /* the record backing the currently viewed franchise member */
 function getViewRecord() {
@@ -3090,29 +3096,6 @@ async function addById(mediaId) {
    picking one and being dropped into season 4 of a show you meant to start is
    the wrong outcome. The walk isn't wasted work either — the record needs a
    franchise regardless, so this only moves it earlier. */
-/* Finish an add after the detail page is already open: pull the franchise
-   graph, fold it in, and repaint if the user is still looking at it. Failure
-   is not fatal — the record is a perfectly good single show without it, and
-   the next refresh will try again. */
-async function fillFranchiseLater(recordId) {
-  try {
-    const franchise = await fetchFranchise(recordId);
-    const rec = library.find((x) => x.id === recordId);
-    if (!rec) return;                                   // removed while we waited
-    if (franchise.length) { rec.franchise = franchise; rec.frv = 2; }
-    delete rec.enriching;
-    consolidateLibrary();
-    persist();
-  } catch {
-    const rec = library.find((x) => x.id === recordId);
-    if (rec) { delete rec.enriching; persist(); }
-  }
-  const active = document.querySelector('.screen.active')?.id;
-  if (active === 'screen-detail' && detailId === recordId) renderDetail();
-  else if (active === 'screen-shelf') renderShelf();
-  updateChrome();
-}
-
 async function addByIdFast(mediaId, { wholeFranchise = false } = {}) {
   const existing = library.find((x) => x.id === mediaId);
   if (existing) return existing;
@@ -3152,7 +3135,8 @@ async function addByIdFast(mediaId, { wholeFranchise = false } = {}) {
   library.push(record);
   consolidateLibrary();
   persist();
-  if (record.enriching) fillFranchiseLater(record.id);
+  if (record.enriching) window.hikariJobs.add('franchise', { id: record.id },
+    { key: 'franchise:' + record.id, priority: 'interactive', label: 'Seasons · ' + record.title });
   if (id !== mediaId) toast(`Added ${record.title} — every season is in its watch order`);
   return library.find((x) => franchiseIds(x).has(id)) || record;
 }
@@ -4060,6 +4044,217 @@ function linkedDirSet() {
   return s;
 }
 
+/* ——— folder review queue ———
+   A scanned folder that matches nothing on the shelf used to produce a toast
+   and nothing else, so new downloads simply never appeared. Now each one is
+   identified against AniList: a confident, unambiguous match is added by
+   itself; anything less waits here for a decision rather than guessing.
+
+   This is device-local on purpose — media paths already never leave the
+   machine (cloudRecord strips `local`), so a review list keyed on folder
+   paths has no business in the account either. */
+const REVIEW_STORE = 'hikariScan.review.v1';
+const AUTO_ADD_MIN = 0.90;      // below this, ask
+const AUTO_ADD_LEAD = 0.08;     // ...and the runner-up must be clearly behind
+
+function loadReview() {
+  try { return JSON.parse(localStorage.getItem(REVIEW_STORE)) || []; } catch { return []; }
+}
+function saveReview(list) {
+  try { localStorage.setItem(REVIEW_STORE, JSON.stringify(list.slice(0, 300))); } catch {}
+  updateChrome();
+}
+const reviewPending = () => loadReview().filter((r) => r.state === 'pending');
+function reviewKnows(folder) {
+  const f = String(folder || '').toLowerCase();
+  return loadReview().some((r) => String(r.folder).toLowerCase() === f);
+}
+function reviewResolve(folder, state) {
+  const list = loadReview();
+  const row = list.find((r) => String(r.folder).toLowerCase() === String(folder).toLowerCase());
+  if (row) { row.state = state; row.decidedAt = Date.now(); saveReview(list); }
+}
+
+/* how well does an AniList title match what the folder is called? */
+function folderMatchScore(folderName, media) {
+  const q = normTitle(folderName);
+  if (!q) return 0;
+  let best = 0;
+  for (const t of [media.title?.english, media.title?.romaji, media.title?.native, ...(media.synonyms || [])]) {
+    const n = normTitle(t);
+    if (!n) continue;
+    let s = 0;
+    if (n === q) s = 1;
+    else if (q.includes(n) || n.includes(q)) {
+      s = 0.92 * (Math.min(n.length, q.length) / Math.max(n.length, q.length));
+    } else s = tokenSubsetScore(q.split(' '), n.split(' '));
+    if (s > best) best = s;
+  }
+  return best;
+}
+
+async function identifyFolder({ folder, name, buckets }) {
+  if (reviewKnows(folder)) return;                       // already decided or waiting
+  if (library.some((r) => (r.local?.dirs || []).some((d) => String(d).toLowerCase() === String(folder).toLowerCase()))) return;
+
+  const results = await searchAnime(name);
+  /* Anime routinely ships a film, an OVA and a recap sharing the series'
+     exact title, so a tie on title score is the normal case, not a sign of
+     ambiguity — "Death Note" scores 1.0 three times over. Break the tie the
+     way a person would: the TV series is what a folder called Death Note
+     means, and popularity settles the rest. */
+  const FORMAT_RANK = { TV: 0, TV_SHORT: 1, ONA: 2, OVA: 3, MOVIE: 4, SPECIAL: 5, MUSIC: 6 };
+  const rank = (m) => FORMAT_RANK[m.format] ?? 9;
+  const scored = results
+    .map((m) => ({ media: m, score: folderMatchScore(name, m) }))
+    .sort((a, b) => b.score - a.score
+      || rank(a.media) - rank(b.media)
+      || (b.media.popularity || 0) - (a.media.popularity || 0))
+    .slice(0, 6);
+
+  const top = scored[0];
+  /* a rival is only a rival if the tie-break did not separate them */
+  const rival = scored.slice(1).find((s) => s.score > (top?.score ?? 0) - AUTO_ADD_LEAD
+    && rank(s.media) <= rank(top.media));
+  const exact = top && top.score >= 0.995;
+
+  if (top && top.score >= AUTO_ADD_MIN && (!rival || (exact && rank(top.media) < rank(rival.media)))) {
+    const rec = await addByIdFast(top.media.id);
+    if (rec) {
+      applyShowScanMerge(rec, [{ folder, name, buckets }]);
+      persist();
+      toast(`Found “${rec.title}” in your media folders — added`);
+      if (shelfScreen.classList.contains('active')) renderShelf();
+    }
+    return;
+  }
+
+  /* not confident enough to decide for them */
+  const list = loadReview();
+  list.unshift({
+    folder, name, state: 'pending', seenAt: Date.now(),
+    episodes: (buckets || []).reduce((n, b) => n + (b.files?.length || 0), 0),
+    candidates: scored.filter((s) => s.score > 0.3).map(({ media: m, score }) => ({
+      id: m.id, score: Math.round(score * 100) / 100,
+      title: m.title?.english || m.title?.romaji || m.title?.native || '?',
+      year: m.seasonYear || null, format: m.format || '',
+      cover: m.coverImage?.large || ''
+    }))
+  });
+  saveReview(list);
+}
+
+/* ——— activity panel ———
+   The queue is only half the fix; the other half is being able to see it.
+   Two silent failures this week (a dead session, a poisoned tombstone list)
+   both survived because nothing on screen said work had stopped. */
+let jobsPanelOpen = false;
+
+function jobsPillPaint(snap) {
+  const pill = document.getElementById('sb-jobs');
+  const txt = document.getElementById('sb-jobs-txt');
+  if (!pill || !txt) return;
+  const waiting = reviewPending().length;
+  const busy = snap.running ? 1 : 0;
+  const total = snap.pending + busy;
+  if (!total && !waiting && !snap.failed) { pill.hidden = true; return; }
+  pill.hidden = false;
+  pill.classList.toggle('working', !!snap.running);
+  pill.classList.toggle('warn', !!waiting || !!snap.failed);
+  txt.textContent = waiting ? `${waiting} TO REVIEW`
+    : snap.failed ? `${snap.failed} FAILED`
+      : snap.running ? (snap.running.label || 'WORKING').toUpperCase()
+        : `${total} QUEUED`;
+  if (jobsPanelOpen) renderJobsPanel(snap);
+}
+
+function renderJobsPanel(snap) {
+  const el = document.getElementById('jobs-panel');
+  if (!el) return;
+  const review = reviewPending();
+  const row = (j, done) => `
+    <div class="jp-row ${done ? 'done ' + j.state : j.state}">
+      <span class="jp-dot"></span>
+      <span class="jp-label">${esc(j.label || j.type)}</span>
+      <span class="jp-meta">${done
+    ? (j.state === 'failed' ? esc((j.error || 'failed').slice(0, 60)) : `${j.ms}ms`)
+    : (j.state === 'running' ? 'running' : j.attempts ? `retry ${j.attempts}` : 'queued')}</span>
+    </div>`;
+
+  el.innerHTML = `
+    <div class="jp-head">
+      <b>Background activity</b>
+      <button class="jp-x" data-action="jobs-close" aria-label="Close">&times;</button>
+    </div>
+    ${review.length ? `
+    <div class="jp-sec">
+      <h4>Needs your say <span>${review.length} folder${review.length === 1 ? '' : 's'}</span></h4>
+      <p class="jp-hint">These didn't match anything confidently enough to add on their own.</p>
+      ${review.slice(0, 8).map((r) => `
+        <div class="jp-rev">
+          <div class="jp-rev-top">
+            <b>${esc(r.name)}</b>
+            <span>${r.episodes} file${r.episodes === 1 ? '' : 's'}</span>
+            <button class="jp-ign" data-action="review-ignore" data-folder="${esc(r.folder)}">Ignore</button>
+          </div>
+          ${r.candidates.length ? `<div class="jp-cands">${r.candidates.slice(0, 4).map((c) => `
+            <button class="jp-cand" data-action="review-pick"
+                    data-folder="${esc(r.folder)}" data-id="${c.id}">
+              ${c.cover ? `<img src="${esc(c.cover)}" alt="" loading="lazy">` : '<span class="jp-nocov"></span>'}
+              <span class="jp-cand-t">${esc(c.title)}</span>
+              <span class="jp-cand-m">${c.year || 'TBA'}${c.format ? ' · ' + esc(fmtFormat(c.format)) : ''} · ${Math.round(c.score * 100)}%</span>
+            </button>`).join('')}</div>`
+    : '<p class="jp-hint">No likely match found — search for it by hand.</p>'}
+        </div>`).join('')}
+    </div>` : ''}
+    <div class="jp-sec">
+      <h4>Queue <span>${snap.pending} pending</span>
+        ${snap.failed ? `<button class="jp-retry" data-action="jobs-retry">Retry failed</button>` : ''}</h4>
+      ${snap.running ? row(snap.running) : ''}
+      ${snap.queue.filter((j) => j.state !== 'running').slice(0, 10).map((j) => row(j)).join('')
+    || (snap.running ? '' : '<p class="jp-hint">Nothing waiting.</p>')}
+    </div>
+    ${snap.history.length ? `
+    <div class="jp-sec">
+      <h4>Recently finished</h4>
+      ${snap.history.slice(0, 8).map((j) => row(j, true)).join('')}
+    </div>` : ''}`;
+}
+
+function toggleJobsPanel(force) {
+  jobsPanelOpen = force ?? !jobsPanelOpen;
+  let el = document.getElementById('jobs-panel');
+  if (!jobsPanelOpen) { el?.remove(); return; }
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'jobs-panel';
+    document.body.appendChild(el);
+  }
+  renderJobsPanel(window.hikariJobs.snapshot());
+}
+
+/* pick a candidate: add the show, then hand it the folder we already scanned */
+async function reviewPick(folder, mediaId) {
+  const entry = loadReview().find((r) => String(r.folder).toLowerCase() === String(folder).toLowerCase());
+  reviewResolve(folder, 'added');
+  toggleJobsPanel(true);
+  try {
+    const rec = await addByIdFast(mediaId);
+    const scan = await window.hikari.mediaScanShow(folder);
+    if (rec && scan) {
+      applyShowScanMerge(rec, [{ folder, name: entry?.name || '', buckets: scan }]);
+      persist();
+    }
+    toast(`Added “${rec.title}” and linked ${entry?.episodes || 0} file${entry?.episodes === 1 ? '' : 's'}`);
+    if (shelfScreen.classList.contains('active')) renderShelf();
+  } catch (err) {
+    reviewResolve(folder, 'pending');
+    toast(`Could not add — ${err.message}`, 'err');
+  }
+  toggleJobsPanel(true);
+}
+
+
 async function autoScanTick(force = false) {
   if (appSettings.autoScan === false || autoScanning) return;
   const roots = (appSettings.mediaRoots || []).filter(Boolean);
@@ -4092,7 +4287,19 @@ async function autoScanTick(force = false) {
     let unmatched = 0;
     for (const s of scanned) {
       const hit = matchShowFolder(s.name, groups);
-      if (!hit) { if (s.isNew) unmatched++; continue; }
+      if (!hit) {
+        if (s.isNew) unmatched++;
+        /* identify it against AniList rather than leaving it in a toast —
+           one job per folder so a slow search never stalls the scan */
+        if (!reviewKnows(s.folder)) {
+          window.hikariJobs.add('identify', { folder: s.folder, name: s.name, buckets: s.buckets }, {
+            key: `identify:${String(s.folder).toLowerCase()}`,
+            priority: 'idle',
+            label: `Identifying · ${s.name}`
+          });
+        }
+        continue;
+      }
       const id = hit.group.rep.id;
       if (!byShow.has(id)) byShow.set(id, { root: hit.group.rep, folders: [] });
       byShow.get(id).folders.push(s);
@@ -4111,7 +4318,7 @@ async function autoScanTick(force = false) {
     }
     if (unmatched && !autoScanNotified) {
       autoScanNotified = true;
-      toast(`${unmatched} new folder${unmatched === 1 ? '' : 's'} didn’t match your shelf — open Import to add`, 'err');
+      toast(`Identifying ${unmatched} new folder${unmatched === 1 ? '' : 's'}…`);
     }
   } catch (e) {
     console.warn('[autoscan]', e.message || e);
@@ -5089,6 +5296,16 @@ document.addEventListener('click', async (e) => {
     case 'open-art-modal': closeCardMenu(); openArtModal(detailId); break;
     case 'close-art-modal': closeArtModal(); break;
 
+    case 'jobs-pill': toggleJobsPanel(); break;
+    case 'jobs-close': toggleJobsPanel(false); break;
+    case 'jobs-retry': window.hikariJobs.retryFailed(); break;
+    case 'review-ignore':
+      reviewResolve(el.dataset.folder, 'ignored');
+      toggleJobsPanel(true);
+      break;
+    case 'review-pick':
+      reviewPick(el.dataset.folder, Number(el.dataset.id));
+      break;
     case 'open-settings': openSettings(); break;
     case 'close-settings': closeSettings(); break;
     case 'save-settings': saveSettingsModal(); break;
@@ -5732,26 +5949,97 @@ document.addEventListener('keydown', (e) => {
      show at a time, marked `bg` so anything you are waiting on goes first, and
      it simply stops when there is nothing left. The shelf regroups as records
      land; until one does, that record keeps its old grouping. */
-  (function migrateRelations() {
-    let stopped = false;
-    const tick = async () => {
-      if (stopped) return;
-      const next = library.find((r) => (r.franchise || []).length && !hasRelations(r));
-      if (!next) { stopped = true; return; }
-      try {
-        next.franchise = await fetchFranchise(next.id);
-        next.frv = FRV_RELATIONS;
-        persist();
-        if (shelfScreen.classList.contains('active')) renderShelf();
-      } catch { /* try the next one; a failure here must never block the app */ }
-      setTimeout(tick, 1500);
-    };
-    setTimeout(tick, 45000);      // let boot, sync and the first scan finish first
-  })();
+  /* the relation migration lives on the job queue now — see queueRelationMigration */
 
-  setTimeout(() => autoScanTick(true), 20000);
-  setInterval(() => autoScanTick(), AUTOSCAN_EVERY);
-  window.addEventListener('focus', () => autoScanTick());
+  /* ——— background work is now jobs ———
+     Every sweep below used to be its own timer with its own retry rule and
+     no memory across restarts. They are handlers on one queue now: single
+     consumer, so the AniList limiter sees one caller; persistent, so an
+     interrupted sweep resumes; and visible in the activity panel, so
+     "why is this show missing its artwork" has an answer on screen. */
+  const J = window.hikariJobs;
+
+  J.register('art', async ({ id }) => {
+    const root = library.find((x) => x.id === id);
+    if (!root) return;                                   // removed while queued
+    if (await fetchPoolInto(root)) {
+      persist();
+      if (shelfScreen.classList.contains('active')) renderShelf();
+      else if (detailScreen.classList.contains('active') && detailId === id) renderDetail();
+    }
+    const cb = artDone.get(id);
+    if (cb) { artDone.delete(id); try { cb(); } catch {} }
+  });
+
+  J.register('franchise', async ({ id }) => {
+    const rec = library.find((x) => x.id === id);
+    if (!rec) return;
+    const franchise = await fetchFranchise(id);
+    if (franchise.length) { rec.franchise = franchise; rec.frv = FRV_RELATIONS; }
+    delete rec.enriching;
+    consolidateLibrary();
+    persist();
+    const active = document.querySelector('.screen.active')?.id;
+    if (active === 'screen-detail' && detailId === id) renderDetail();
+    else if (active === 'screen-shelf') renderShelf();
+    updateChrome();
+  });
+
+  J.register('meta', async ({ id }) => {
+    const root = library.find((x) => x.id === id);
+    if (!root) return;
+    await refreshRoot(root);                             // persists internally
+    if (shelfScreen.classList.contains('active')) renderShelf();
+    else if (detailScreen.classList.contains('active') && detailId === id) renderDetail();
+  });
+
+  J.register('identify', async (payload) => { await identifyFolder(payload); });
+  J.register('scan', async () => { await autoScanTick(true); });
+
+  J.subscribe(jobsPillPaint);
+  J.start();
+
+  /* the relation migration, as a job per show instead of a self-rescheduling
+     setTimeout that forgot everything on quit */
+  function queueRelationMigration() {
+    for (const r of library) {
+      if ((r.franchise || []).length && !hasRelations(r)) {
+        J.add('franchise', { id: r.id }, {
+          key: `franchise:${r.id}`, priority: 'idle', label: `Seasons · ${r.title}`
+        });
+      }
+    }
+  }
+
+  /* Staleness sweep: the Plex/Jellyfin model — nothing waits for you to open
+     it. Descriptions, seasons, dub info and artwork all refresh on their own
+     schedule, lowest priority, so they never delay anything you asked for. */
+  function queueStaleRefresh() {
+    for (const r of library.filter(isStale)) {
+      J.add('meta', { id: r.id }, {
+        key: `meta:${r.id}`, priority: 'idle', label: `Details · ${r.title}`
+      });
+    }
+    if (appSettings.tmdbKey || appSettings.fanartKey) {
+      for (const g of groupEntries(library)) {
+        const root = g.rep;
+        if (root.artPool?.stamp === artStamp()) continue;
+        J.add('art', { id: root.id }, {
+          key: `art:${root.id}`, priority: 'idle', label: `Artwork · ${root.title}`
+        });
+      }
+    }
+  }
+
+  setTimeout(() => { queueRelationMigration(); queueStaleRefresh(); }, 45000);
+  setInterval(queueStaleRefresh, 6 * 60 * 60 * 1000);
+
+  const queueScan = (delay = 0) => J.add('scan', {}, {
+    key: 'scan:roots', priority: 'soon', label: 'Scanning media folders', delay
+  });
+  queueScan(20000);
+  setInterval(() => queueScan(), AUTOSCAN_EVERY);
+  window.addEventListener('focus', () => queueScan());
 
   /* Re-publish periodically, not just at boot: a DHCP lease renewal or
      plugging in Ethernet changes the address under us, and until this row

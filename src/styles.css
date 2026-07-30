@@ -2135,3 +2135,101 @@ h1.display em{font-style:normal;color:var(--muted)}
 @media (prefers-reduced-motion:reduce){
   .skel-cover, .skel-line{animation:none; background:var(--surface)}
 }
+
+/* ——— background activity panel ———
+   Anchored bottom-right above the status bar, where its pill lives. */
+#sb-jobs.working .sb-spin{display:inline-block}
+#sb-jobs.warn .sb-txt{color:var(--dub)}
+#jobs-panel{
+  position:fixed; right:14px; bottom:calc(var(--status) + 12px); z-index:940;
+  width:min(430px, calc(100vw - 28px)); max-height:min(620px, calc(100vh - var(--status) - 40px));
+  overflow-y:auto; overscroll-behavior:contain;
+  /* --glass is .62 alpha, which is fine for a toolbar and hopeless for a
+     dense panel: over the billboard hero the review text washed out
+     completely. Dense content needs an opaque plate. */
+  /* fully opaque: even 4% let the billboard's white line art through and
+     the review text lost its contrast */
+  background:var(--surface);
+  border:1px solid var(--line); border-radius:var(--r-lg);
+  box-shadow:var(--shadow-l); font-size:13px;
+  animation:jp-in .26s cubic-bezier(.2,.9,.25,1) both;
+}
+@keyframes jp-in{from{opacity:0; transform:translateY(12px) scale(.985)} to{opacity:1; transform:none}}
+.jp-head{
+  position:sticky; top:0; z-index:1; display:flex; align-items:center; justify-content:space-between;
+  padding:13px 14px; background:var(--surface);
+  border-bottom:1px solid var(--line-2);
+}
+.jp-head b{font-size:13px; letter-spacing:.01em}
+.jp-x{
+  width:26px; height:26px; border:0; border-radius:var(--r-sm); cursor:pointer;
+  background:transparent; color:var(--muted); font-size:18px; line-height:1;
+  transition:background .16s ease, color .16s ease;
+}
+.jp-x:hover{background:rgba(255,255,255,.08); color:var(--ink)}
+.jp-sec{padding:12px 14px; border-bottom:1px solid var(--line-2)}
+.jp-sec:last-child{border-bottom:0}
+.jp-sec h4{
+  display:flex; align-items:center; gap:9px; margin:0 0 9px;
+  font-size:10.5px; font-weight:700; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--muted);
+}
+.jp-sec h4 span{color:var(--faint); font-weight:600; letter-spacing:.06em}
+.jp-retry{
+  margin-left:auto; padding:3px 9px; border-radius:6px; cursor:pointer;
+  border:1px solid var(--line); background:transparent; color:var(--ink-2);
+  font-size:10.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+}
+.jp-retry:hover{background:rgba(255,255,255,.07)}
+.jp-hint{margin:0; color:var(--muted); font-size:12px; line-height:1.5}
+
+.jp-row{display:flex; align-items:center; gap:9px; padding:5px 0; min-width:0}
+.jp-dot{
+  flex:0 0 auto; width:7px; height:7px; border-radius:50%;
+  background:var(--faint);
+}
+.jp-row.running .jp-dot{background:var(--good); animation:jp-pulse 1.2s ease-in-out infinite}
+.jp-row.failed .jp-dot, .jp-row.done.failed .jp-dot{background:var(--danger)}
+.jp-row.done .jp-dot{background:color-mix(in srgb, var(--good) 45%, transparent)}
+@keyframes jp-pulse{0%,100%{opacity:1} 50%{opacity:.3}}
+.jp-label{
+  flex:1 1 auto; min-width:0; color:var(--ink-2);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.jp-row.done .jp-label{color:var(--muted)}
+.jp-meta{flex:0 0 auto; color:var(--faint); font-size:11px; font-variant-numeric:tabular-nums}
+.jp-row.done.failed .jp-meta{color:var(--danger)}
+
+/* review entries */
+.jp-rev{padding:9px 0; border-top:1px solid var(--line-2)}
+.jp-rev:first-of-type{border-top:0}
+.jp-rev-top{display:flex; align-items:center; gap:9px; margin-bottom:8px}
+.jp-rev-top b{
+  flex:1 1 auto; min-width:0; color:var(--ink); font-size:12.5px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.jp-rev-top span{flex:0 0 auto; color:var(--faint); font-size:11px}
+.jp-ign{
+  flex:0 0 auto; padding:3px 9px; border-radius:6px; cursor:pointer;
+  border:1px solid var(--line); background:transparent; color:var(--muted);
+  font-size:10.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+}
+.jp-ign:hover{background:rgba(255,255,255,.07); color:var(--ink-2)}
+.jp-cands{display:grid; grid-template-columns:repeat(4, 1fr); gap:8px}
+.jp-cand{
+  display:flex; flex-direction:column; gap:5px; padding:0; cursor:pointer;
+  border:1px solid transparent; border-radius:var(--r-sm); background:transparent;
+  text-align:left; overflow:hidden; transition:border-color .16s ease, transform .16s ease;
+}
+.jp-cand:hover{border-color:var(--line); transform:translateY(-2px)}
+.jp-cand img, .jp-nocov{
+  width:100%; aspect-ratio:2/3; object-fit:cover; border-radius:var(--r-sm);
+  background:var(--surface); display:block;
+}
+.jp-cand-t{
+  color:var(--ink-2); font-size:11px; line-height:1.3;
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
+  overflow:hidden; white-space:normal;
+}
+.jp-cand-m{color:var(--faint); font-size:10px; font-variant-numeric:tabular-nums}
+@media (max-width:860px){ .jp-cands{grid-template-columns:repeat(3, 1fr)} }
