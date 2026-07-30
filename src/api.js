@@ -850,6 +850,13 @@ function pickTags(tags) {
 /* Fast add: ONE AniList call → an instantly-usable partial record.
    epv:0 and a missing `franchise` key make the existing background
    upgraders (upgradeEpisodes / upgradeFranchise) fill the rest in. */
+/* Episode-data version. BUMP THIS whenever the episode pipeline changes
+   what it produces, or records already at the old number never re-enrich:
+   the TVDB split-cour alignment shipped in 3.0.1 without a bump, so every
+   existing record kept Part 1 stills on Part 2 indefinitely.
+     5 -> 6: air-date alignment for split cours. */
+const EP_VERSION = 6;
+
 async function enrichShowBase(mediaId) {
   const m = await fetchDetail(mediaId);
   const anilistEps = (m.streamingEpisodes || []).map((e) => {
@@ -1022,7 +1029,7 @@ async function enrichShow(mediaId, opts = {}) {
       : null,
     trailer: m.trailer?.site === 'youtube' && m.trailer.id ? { id: m.trailer.id } : null,
     episodeSource: 'merged',
-    epv: 5,
+    epv: EP_VERSION,
     epSources,
     episodesList: eps,
     seasons,

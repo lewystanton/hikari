@@ -965,7 +965,9 @@ function shelfGridHTML() {
 
 /* ——— continue watching ——— */
 function orderedSeasons(root) {
-  const fr = (root.franchise || []).filter(isSeasonEntry);
+  /* same reason: a spin-off is not a season of this show, so it must not
+     appear in continue-watching or collect local files as one */
+  const fr = seasonEntriesOf(root.franchise || [], root.id).filter(isSeasonEntry);
   return fr.length ? fr : [{ id: root.id, episodes: root.episodes || root.episodesList?.length || 0, title: root.title }];
 }
 /* the first unwatched episode across the show's seasons, in watch order */
@@ -2575,7 +2577,7 @@ function openEpInfo(mediaId, n) {
       </div>
       ${e.overview
         ? `<p class="dp-syn">${esc(e.overview)}</p>`
-        : `<p class="dp-syn none">No episode synopsis available${(rec.epv || 0) < 5 ? ' yet — refreshing episode data…' : ''}.</p>`}
+        : `<p class="dp-syn none">No episode synopsis available${(rec.epv || 0) < EP_VERSION ? ' yet — refreshing episode data…' : ''}.</p>`}
       <div class="dp-actions">
         ${dest.play ? `<button class="btn-primary" ${dest.act}>${dest.local ? '▶ Play' : 'Open ↗'}</button>` : ''}
         <button class="btn-ghost" data-action="toggle-ep" data-media="${mediaId}" data-n="${n}">${seen ? 'Unmark watched' : '✓ Mark watched'}</button>
@@ -2698,14 +2700,14 @@ function epDestFor(root, rec, e) {
 function episodesHTML(root, s) {
   /* one unified pipeline — older records get adapted rows + a background upgrade */
   let rows = [];
-  if ((s.epv || 0) >= 5) {
+  if ((s.epv || 0) >= EP_VERSION) {
     rows = episodesOf(s);
   } else if (s.episodesList?.length) {
     rows = episodesOf(s).map((e) => ({ aired: '', filler: false, ...e }));
   } else if (s.jikanEpisodes?.length) {
     rows = s.jikanEpisodes.map((e) => ({ ...e, thumbnail: '', url: '', site: '' }));
   }
-  if ((s.epv || 0) < 5) upgradeEpisodes(s);
+  if ((s.epv || 0) < EP_VERSION) upgradeEpisodes(s);
 
   if (!rows.length) {
     return {
@@ -2714,7 +2716,7 @@ function episodesHTML(root, s) {
     };
   }
 
-  const syncing = (s.epv || 0) < 5;
+  const syncing = (s.epv || 0) < EP_VERSION;
   const syncNote = syncing
     ? `<p class="sync-note"><span class="spinner"></span> MERGING EPISODE DATA — TVDB · MAL · KITSU…</p>`
     : '';
@@ -2811,11 +2813,11 @@ async function mergeEpisodesInto(s) {
     kitsu.map.size ? 'KITSU' : null,
     anilistEps.length ? 'ANILIST' : null
   ].filter(Boolean).join(' + ') || 'NONE';
-  s.epv = 5;
+  s.epv = EP_VERSION;
 }
 const epUpgradeAttempted = new Set();
 function upgradeEpisodes(s) {
-  if ((s.epv || 0) >= 5 || epUpgradeAttempted.has(s.id)) return;
+  if ((s.epv || 0) >= EP_VERSION || epUpgradeAttempted.has(s.id)) return;
   epUpgradeAttempted.add(s.id);
   (async () => {
     try {
@@ -2870,7 +2872,10 @@ function renderDetail() {
   const fr = root.franchise;
   if (!fr || (root.frv || 0) < FRV_RELATIONS) upgradeFranchise(root);
   if (s.trailer === undefined) upgradeTrailer(s);
-  const folded = fr ? foldedSeasons(fr) : [];
+  /* seasonEntriesOf narrows the franchise to THIS continuity before anything
+     is numbered. Without it The Slime Diaries — a TV spin-off — becomes
+     "Season 3" and pushes the real seasons 3 and 4 down to 4 and 5. */
+  const folded = fr ? foldedSeasons(seasonEntriesOf(fr, root.id)) : [];
 
   const seasonTabs = folded.length > 1 ? `
     <div class="season-tabs">
