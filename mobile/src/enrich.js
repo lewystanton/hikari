@@ -485,7 +485,11 @@ export async function enrichRecord(rec) {
     episodesList: rows.length ? rows : rec.episodesList,
     episodeSource: rows.length ? 'merged' : rec.episodeSource,
     epSources: ['JIKAN', kitsu.map.size && 'KITSU', tvdb.size && 'TVDB'].filter(Boolean).join('+') || rec.epSources,
-    epv: native ? 5 : 0,
+    /* Keep in lock-step with EP_VERSION in the desktop src/api.js. If the
+       phone writes an older number the desktop re-enriches everything it
+       touches, and if it writes a newer one the desktop stops fixing real
+       staleness. Mobile carries the same split-cour alignment. */
+    epv: native ? 6 : 0,
     frv: 4,                      // franchise entries carry per-season dub flags
     ...(dubSched ? { dubSched } : {}),
     fetchedAt: Date.now()
