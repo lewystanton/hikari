@@ -16,17 +16,22 @@ import { gql } from './api.js';
 export const isNative = () => Capacitor.isNativePlatform();
 const jsleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function xjson(url) {
+/* `ms` bounds the slow providers. CapacitorHttp takes its own timeouts and
+   ignores an AbortSignal entirely, so the two transports need it expressed
+   differently — passing a signal here would have been silently inert. */
+async function xjson(url, ms = 0) {
   try {
     if (isNative()) {
       const res = await CapacitorHttp.get({
         url, headers: { Accept: 'application/json' },
-        connectTimeout: 15000, readTimeout: 25000
+        connectTimeout: ms ? Math.min(ms, 15000) : 15000,
+        readTimeout: ms || 25000
       });
       if (res.status < 200 || res.status >= 300) return null;
       return typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
     }
-    const r = await fetch(url, { headers: { Accept: 'application/json' } });
+    const r = await fetch(url, { headers: { Accept: 'application/json' },
+      signal: ms && typeof AbortSignal?.timeout === 'function' ? AbortSignal.timeout(ms) : undefined });
     return r.ok ? await r.json() : null;
   } catch { return null; }
 }
@@ -380,49 +385,57 @@ async function fetchFanartImages(malId, key) {
 const ART_POOL_QUERY =
   'query($ids:[Int]){Page(perPage:50){media(id_in:$ids,type:ANIME){id idMal coverImage{extraLarge large} bannerImage}}}';
 
-export async function fetchArtPool(anilistIds, malId, keys = {}) {
-  const covers = [], banners = [];
-  if (keys.tmdb) {
-    const t = await fetchTmdbImages(malId, keys.tmdb);
-    covers.push(...t.covers); banners.push(...t.banners);
-  }
-  if (keys.fanart) {
-    const f = await fetchFanartImages(malId, keys.fanart);
-    covers.push(...f.covers); banners.push(...f.banners);
-  }
-  try {
-    const d = await gql(ART_POOL_QUERY, { ids: anilistIds.slice(0, 50) }, { bg: true });
+/* Same shape as the desktop's src/api.js — see the note there. Six providers
+   awaited in turn, most of the wall clock spent waiting on nothing, and the
+   AniList leg queued behind whatever crawl was already running. They are
+   independent, so run them together; only Jikan chains, off the MAL ids the
+   AniList query returns. Reassembled in provider order because position in
+   covers/banners IS the preference order. */
+const ART_TIMEOUT = 8000;
+const cappedArt = (p) => Promise.race([
+  p, new Promise((res) => setTimeout(() => res({ covers: [], banners: [] }), ART_TIMEOUT + 4000))
+]).catch(() => ({ covers: [], banners: [] }));
+
+export async function fetchArtPool(anilistIds, malId, keys = {}, { bg = true } = {}) {
+  const empty = { covers: [], banners: [] };
+
+  const pTmdb = keys.tmdb ? cappedArt(fetchTmdbImages(malId, keys.tmdb)) : Promise.resolve(empty);
+  const pFanart = keys.fanart ? cappedArt(fetchFanartImages(malId, keys.fanart)) : Promise.resolve(empty);
+
+  const pAni = cappedArt((async () => {
+    const covers = [], banners = [], jikan = [];
+    const d = await gql(ART_POOL_QUERY, { ids: anilistIds.slice(0, 50) }, { bg });
     const media = d.Page.media || [];
     for (const m of media) {
       const c = m.coverImage?.extraLarge || m.coverImage?.large;
       if (c) covers.push(c);
       if (m.bannerImage) banners.push(m.bannerImage);
     }
-    for (const id of media.map((m) => m.idMal).filter(Boolean).slice(0, 5)) {
-      /* Jikan /pictures 504s on a cold cache — one retry usually lands */
-      for (let attempt = 0; attempt < 2; attempt++) {
-        const j = await xjson(`https://api.jikan.moe/v4/anime/${id}/pictures`);
-        if (j) {
-          for (const p of j.data || []) {
-            const u = p.jpg?.large_image_url || p.jpg?.image_url;
-            if (u) covers.push(u);
-          }
-          break;
-        }
-        await jsleep(1200);
+    /* three at once with a hard timeout, rather than five in series with a
+       1200ms backoff and a 500ms gap — /pictures 504s on a cold cache and
+       the retry used to cost a full connection timeout */
+    const malIds = media.map((m) => m.idMal).filter(Boolean).slice(0, 3);
+    await Promise.all(malIds.map(async (id) => {
+      const j = await xjson(`https://api.jikan.moe/v4/anime/${id}/pictures`, ART_TIMEOUT);
+      for (const p of (j?.data || [])) {
+        const u = p.jpg?.large_image_url || p.jpg?.image_url;
+        if (u) jikan.push(u);
       }
-      await jsleep(500);
-    }
-  } catch { /* pool stays partial */ }
+    }));
+    return { covers: [...covers, ...jikan], banners };
+  })());
 
-  try {
-    const m = await xjson(`https://kitsu.io/api/edge/mappings?filter[externalSite]=myanimelist/anime&filter[externalId]=${malId}&include=item`);
+  const pKitsu = cappedArt((async () => {
+    const covers = [], banners = [];
+    const m = await xjson(`https://kitsu.io/api/edge/mappings?filter[externalSite]=myanimelist/anime&filter[externalId]=${malId}&include=item`, ART_TIMEOUT);
     const at = m?.included?.[0]?.attributes;
     if (at?.posterImage?.original) covers.push(at.posterImage.original);
     if (at?.coverImage?.original) banners.push(at.coverImage.original);
-  } catch { /* no kitsu art */ }
+    return { covers, banners };
+  })());
 
-  try {
+  const pTvdb = cappedArt((async () => {
+    const covers = [], banners = [];
     const arm = await armIds(malId);
     if (arm?.thetvdb) {
       let show = tvdbShowCache.get(arm.thetvdb);
@@ -436,8 +449,12 @@ export async function fetchArtPool(anilistIds, malId, keys = {}) {
         else if (t === 'poster') covers.push(im.url);
       }
     }
-  } catch { /* no tvdb art */ }
+    return { covers, banners };
+  })());
 
+  const parts = await Promise.all([pTmdb, pFanart, pAni, pKitsu, pTvdb]);
+  const covers = parts.flatMap((p) => p?.covers || []);
+  const banners = parts.flatMap((p) => p?.banners || []);
   return { covers: [...new Set(covers)], banners: [...new Set(banners)] };
 }
 

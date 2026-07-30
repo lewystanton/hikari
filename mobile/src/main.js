@@ -1614,7 +1614,12 @@ async function prefetchArtPool(root) {
     rec.artPool = pool;
     pushRecord(rec);
     syncSoon();
-  } catch { /* the lightbox still has AniList art */ }
+  } catch {
+    /* a bad minute should not cost this show its artwork for the whole
+       session — let the next visit try again (the desktop's equivalent
+       guard was removed when it moved onto the job queue) */
+    artPoolAttempted.delete(root.id);
+  }
 }
 
 /* Old pools stored w1280 URLs; serve the original instead. */
