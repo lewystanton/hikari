@@ -1211,3 +1211,84 @@ async function fetchTraceQuota(apiKey) {
   if (!Number.isFinite(total)) return null;
   return { total, used, remaining: Math.max(0, total - used), keyed: !!apiKey };
 }
+
+/* ——— browse: query AniList directly rather than filtering the shelf ———
+   Two vocabularies matter here and they are easy to conflate. There are 19
+   GENRES (Comedy, Romance, Ecchi…) and 425 TAGS in 24 categories (Female
+   Harem, Iyashikei…), and what a person calls "tags" spans both — "harem"
+   is three separate tags, none of them a genre. Callers pass whichever and
+   this sorts them out.
+
+   Verified against the live API: genre_in and tag_in are both AND, and they
+   AND with each other too, so a multi-select narrows exactly as expected
+   with no client-side filtering. pageInfo.total caps at 5000, so it is
+   reported as a floor, never as a count. */
+const BROWSE_QUERY = `
+query ($page: Int, $genres: [String], $tags: [String], $formats: [MediaFormat],
+       $season: MediaSeason, $year: Int, $status: MediaStatus, $sort: [MediaSort],
+       $minScore: Int, $adult: Boolean, $search: String) {
+  Page(page: $page, perPage: 30) {
+    pageInfo { currentPage hasNextPage total }
+    media(type: ANIME, genre_in: $genres, tag_in: $tags, format_in: $formats,
+          season: $season, seasonYear: $year, status: $status, sort: $sort,
+          averageScore_greater: $minScore, isAdult: $adult, search: $search) {
+      id idMal
+      title { romaji english native }
+      format status season seasonYear episodes duration
+      averageScore popularity genres
+      tags { name rank isGeneralSpoiler }
+      coverImage { extraLarge large color }
+      bannerImage
+      description(asHtml: false)
+      studios(isMain: true) { nodes { name } }
+      nextAiringEpisode { episode airingAt }
+    }
+  }
+}`;
+
+async function browseAnime(f = {}, page = 1) {
+  const vars = { page, sort: f.sort || ['POPULARITY_DESC'] };
+  if (f.genres?.length) vars.genres = f.genres;
+  if (f.tags?.length) vars.tags = f.tags;
+  if (f.formats?.length) vars.formats = f.formats;
+  if (f.season) vars.season = f.season;
+  if (f.year) vars.year = Number(f.year);
+  if (f.status) vars.status = f.status;
+  if (f.minScore) vars.minScore = Number(f.minScore) - 1;   // _greater is exclusive
+  if (f.search) vars.search = f.search;
+  /* Leave isAdult unset to get AniList's default (adult excluded). Passing
+     false is NOT the same as omitting it on some filter combinations. */
+  if (f.adult) vars.adult = true;
+
+  const d = await gql(BROWSE_QUERY, vars, { bg: false });   // someone is waiting on this
+  const p = d.Page;
+  return {
+    page: p.pageInfo.currentPage,
+    hasNext: p.pageInfo.hasNextPage,
+    atLeast: p.pageInfo.total,          // capped at 5000 by AniList — a floor, not a count
+    media: p.media || []
+  };
+}
+
+/* The two vocabularies, fetched once and cached for the session. Genres are a
+   flat 19; tags come with a category so the 425 can be grouped instead of
+   dumped in one list nobody can scan. */
+let vocabCache = null;
+async function fetchFilterVocab() {
+  if (vocabCache) return vocabCache;
+  const d = await gql(`{ GenreCollection MediaTagCollection { name description category isAdult } }`,
+    {}, { bg: false });
+  const tags = (d.MediaTagCollection || []).filter((t) => t.category);
+  const byCat = new Map();
+  for (const t of tags) {
+    if (!byCat.has(t.category)) byCat.set(t.category, []);
+    byCat.get(t.category).push(t);
+  }
+  for (const list of byCat.values()) list.sort((a, b) => a.name.localeCompare(b.name));
+  vocabCache = {
+    genres: (d.GenreCollection || []).filter((g) => g !== 'Hentai'),
+    tags,
+    categories: [...byCat.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+  };
+  return vocabCache;
+}

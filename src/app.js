@@ -44,7 +44,8 @@ const RELATION_LABEL = {
 };
 const VIEW_LABEL = {
   all: 'Library', airing: 'Airing now', dubbed: 'English dub', unwatched: 'Unwatched',
-  favourites: 'Favourites', discover: 'Discover', announce: 'Announcements'
+  favourites: 'Favourites', discover: 'Discover', announce: 'Announcements',
+  browse: 'Browse'
 };
 
 const BRANDS = [
@@ -2135,6 +2136,15 @@ function announcementsHTML() {
 function renderShelf() {
   closeCardMenu();
   if (currentView === 'discover') { renderDiscover(); return; }
+  if (currentView === 'browse') {
+    /* the module owns everything inside #browseHost; the shelf screen just
+       provides the container so the rail can be sticky against it */
+    if (!document.getElementById('browseHost')) {
+      shelfScreen.innerHTML = '<div id="browseHost" class="browse-wrap"></div>';
+    }
+    window.hikariBrowse.open();
+    return;
+  }
   if (currentView === 'announce') {
     patchHTML(shelfScreen, billboardHTML() + announcementsHTML());
     hydrateAnnouncements();
