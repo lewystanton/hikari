@@ -103,6 +103,71 @@
     schedulePush();
   }
 
+  /* —— which device does the housekeeping ————————
+     Artwork sweeps and metadata refreshes write the SAME rows from every
+     signed-in device, so two apps running them is double the AniList and
+     TMDB spend for one result, plus a write race on each record. One device
+     holds the job; the rest stay out of its way.
+
+     The desktop wins by default — it is the one that can see the filesystem,
+     it is usually on mains power, and it already runs the heavier pipeline.
+     The phone takes over only when no desktop has checked in recently, so an
+     uninstalled or switched-off desktop does not stall the account. */
+  const WORKER_FRESH = 10 * 60 * 1000;      // a claim older than this is abandoned
+  const DEVICE_ID = (() => {
+    let id = localStorage.getItem('hikari.deviceId');
+    if (!id) {
+      id = 'd-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+      localStorage.setItem('hikari.deviceId', id);
+    }
+    return id;
+  })();
+  let workerClaim = null;                   // last seen {id, kind, at}
+
+  function holdsWorkerRole() {
+    if (!user) return true;                 // signed out: nobody to coordinate with
+    const c = workerClaim;
+    if (!c || !c.id) return true;                       // vacant
+    if (c.id === DEVICE_ID) return true;                // ours
+    if (Date.now() - (c.at || 0) > WORKER_FRESH) return true;   // stale, take it
+    return c.kind !== 'desktop';            // a phone holding it yields to us
+  }
+  /* The settings row is only pushed when its hash MOVES, so piggybacking the
+     claim on that alone would let it go stale after ten minutes and get
+     stolen by an idle phone, then taken back — flapping between devices
+     while neither gets a full sweep done. Refresh it on its own clock. */
+  async function refreshWorkerClaim() {
+    if (!user || !holdsWorkerRole()) return;
+    if (Date.now() - (workerClaim?.at || 0) < WORKER_FRESH / 2) return;   // still warm
+    try {
+      const { data: cur } = await supa.from('settings')
+        .select('data').eq('user_id', user.id).maybeSingle();
+      const mine = { id: DEVICE_ID, kind: 'desktop', at: Date.now() };
+      /* re-check against what we just read: another desktop may have claimed
+         it since our last pull, and two desktops trading it is the same
+         wasted work as a desktop and a phone trading it */
+      const theirs = cur?.data?.metaWorker;
+      if (theirs && theirs.id !== DEVICE_ID && theirs.kind === 'desktop'
+        && Date.now() - (theirs.at || 0) < WORKER_FRESH) { workerClaim = theirs; return; }
+      await supa.from('settings').upsert({
+        user_id: user.id,
+        data: { ...(cur?.data || {}), metaWorker: mine },
+        updated_at: new Date().toISOString()
+      });
+      workerClaim = mine;
+    } catch { /* keep whatever we last knew */ }
+  }
+
+  /* refreshed on every push so the claim stays warm while this app is open */
+  function workerHeartbeat(row) {
+    const cur = row?.metaWorker || null;
+    workerClaim = cur;
+    if (!holdsWorkerRole()) return cur;
+    const mine = { id: DEVICE_ID, kind: 'desktop', at: Date.now() };
+    workerClaim = mine;
+    return mine;
+  }
+
   /* —— hashing / record shaping ————————————————— */
   function hash(s) {
     let h = 5381;
@@ -312,6 +377,7 @@
           if (!bothTombs[id] || bothTombs[id] < t) bothTombs[id] = t;
         }
         merged.tombstones = bothTombs;
+        merged.metaWorker = workerHeartbeat(cur?.data);
         Object.assign(tombs, bothTombs); saveTombs();
         if (tombPurge) {
           tombPurge = false;
@@ -365,7 +431,9 @@
       const { data: srow } = await supa.from('settings')
         .select('data').eq('user_id', user.id).maybeSingle();
       if (srow?.data) {
-        const { tombstones, ...remoteSettings } = srow.data;
+        const { tombstones, metaWorker, ...remoteSettings } = srow.data;
+        workerClaim = metaWorker || null;
+        refreshWorkerClaim();      // keep it warm; never awaited, never blocks a pull
         if (!tombPurge) {
           for (const [id, t] of Object.entries(tombstones || {})) {
             if (!tombs[id] || tombs[id] < t) tombs[id] = t;
@@ -646,5 +714,5 @@
     }
   });
 
-  window.syncUI = { fill: fillTab, push: () => pushChanges(), pull: () => pullChanges(), deleted: markDeleted, state: () => ({ user: user?.email, online, meta: Object.keys(meta).length }) };
+  window.syncUI = { fill: fillTab, push: () => pushChanges(), pull: () => pullChanges(), deleted: markDeleted, isWorker: holdsWorkerRole, deviceId: () => DEVICE_ID, state: () => ({ user: user?.email, online, meta: Object.keys(meta).length }) };
 })();

@@ -6002,6 +6002,7 @@ document.addEventListener('keydown', (e) => {
   /* the relation migration, as a job per show instead of a self-rescheduling
      setTimeout that forgot everything on quit */
   function queueRelationMigration() {
+    if (!mayHousekeep()) return;
     for (const r of library) {
       if ((r.franchise || []).length && !hasRelations(r)) {
         J.add('franchise', { id: r.id }, {
@@ -6014,7 +6015,13 @@ document.addEventListener('keydown', (e) => {
   /* Staleness sweep: the Plex/Jellyfin model — nothing waits for you to open
      it. Descriptions, seasons, dub info and artwork all refresh on their own
      schedule, lowest priority, so they never delay anything you asked for. */
+  /* Idle housekeeping only runs on the device that holds the role — two
+     apps refreshing the same rows is double the API spend for one result.
+     Anything the user actually asked for is never gated on this. */
+  const mayHousekeep = () => window.syncUI?.isWorker?.() !== false;
+
   function queueStaleRefresh() {
+    if (!mayHousekeep()) return;
     for (const r of library.filter(isStale)) {
       J.add('meta', { id: r.id }, {
         key: `meta:${r.id}`, priority: 'idle', label: `Details · ${r.title}`

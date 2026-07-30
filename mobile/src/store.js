@@ -82,6 +82,7 @@ async function loadCache() {
   } else {
     state.tombs = (await kvGet(`tomb.${state.user.id}`)) || {};
   }
+  state.deviceId = await deviceId();
   state.lastSync = (await kvGet(`last.${state.user.id}`)) || 0;
   /* keys are cached so artwork still works on a cold, offline start */
   cloudSettings = (await kvGet(`set.${state.user.id}`)) || {};
@@ -111,6 +112,46 @@ function applyRemote(mediaId, record, updatedAt) {
   }
   state.meta[mediaId] = { h: recHash(incoming), t: updatedAt };
   return true;
+}
+
+/* —— which device does the housekeeping ——
+   The desktop and the phone refresh the SAME rows, so both sweeping means
+   double the AniList and TMDB spend for one result. The desktop wins by
+   default: it sees the filesystem, it is usually on mains power, and it
+   runs the heavier pipeline. The phone takes over only when no desktop has
+   checked in recently, so an uninstalled desktop does not stall anything.
+   Nothing the user actually asked for is ever gated on this. */
+const WORKER_FRESH = 10 * 60 * 1000;
+let workerClaim = null;
+async function deviceId() {
+  let id = await kvGet('deviceId');
+  if (!id) { id = 'm-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36); await kvSet('deviceId', id); }
+  return id;
+}
+export function holdsWorkerRole() {
+  if (!state.user) return true;
+  const c = workerClaim;
+  if (!c || !c.id) return true;
+  if (c.id === state.deviceId) return true;
+  if (Date.now() - (c.at || 0) > WORKER_FRESH) return true;
+  return false;                 // a live desktop outranks us, always
+}
+async function refreshWorkerClaim() {
+  if (!state.user || !holdsWorkerRole()) return;
+  if (Date.now() - (workerClaim?.at || 0) < WORKER_FRESH / 2) return;
+  try {
+    const { data: cur } = await supa.from('settings')
+      .select('data').eq('user_id', state.user.id).maybeSingle();
+    const theirs = cur?.data?.metaWorker;
+    /* never take it from a desktop that is still alive */
+    if (theirs && theirs.id !== state.deviceId
+      && Date.now() - (theirs.at || 0) < WORKER_FRESH) { workerClaim = theirs; return; }
+    const mine = { id: state.deviceId, kind: 'mobile', at: Date.now() };
+    await supa.from('settings').upsert({ user_id: state.user.id,
+      data: { ...(cur?.data || {}), metaWorker: mine },
+      updated_at: new Date().toISOString() });
+    workerClaim = mine;
+  } catch { /* keep what we last knew */ }
 }
 
 /* —— pull (manifest diff, then only changed rows) —— */
@@ -147,6 +188,8 @@ export async function pull() {
     const { data: srow } = await supa.from('settings')
       .select('data').eq('user_id', state.user.id).maybeSingle();
     cloudSettings = srow?.data || {};
+    workerClaim = cloudSettings.metaWorker || null;
+    refreshWorkerClaim();
     state.tombs = state.tombs || {};
     if (state.tombPurge) {
       /* clear the poisoned set at the source rather than only ignoring it —

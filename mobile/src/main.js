@@ -24,8 +24,7 @@ import './styles.css';
 import Hls from 'hls.js';
 import {
   supa, state, initAuth, pull, pushRecord, addShow, removeShow, fetchSeasonLite, cacheGet, cacheSet,
-  saveKeys
-} from './store.js';
+  saveKeys, holdsWorkerRole } from './store.js';
 import {
   searchAnime, seasonlessKey, buildRecord, fetchRecommendations, fetchDubFlags, gql, pickTags,
   traceMoeSearch, traceStamp, fetchBasics, fetchTraceQuota, alBudget
@@ -1441,6 +1440,10 @@ async function enrichAdded(id, quiet = false) {
 let bootEnrichDone = false;
 async function bootEnrich() {
   if (bootEnrichDone || !isNative() || !state.library.length) return;
+  /* housekeeping only — a live desktop does this better and we would just
+     be paying for the same API calls twice. Adds the user makes by hand
+     still enrich immediately; this is the unprompted catch-up sweep. */
+  if (!holdsWorkerRole()) return;
   bootEnrichDone = true;
   for (const r of state.library.filter(isLiteRec).slice(0, 4)) await enrichAdded(r.id, true);
 }
