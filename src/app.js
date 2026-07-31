@@ -828,9 +828,16 @@ function slideHTML(sl, i) {
     dubbed ? '<b>EN DUB</b>' : ''
   ].filter(Boolean).join(' · ');
   const synopsis = cleanSynopsis(rep.description || '').split('\n')[0];
-  const resume = nx && prog.done > 0
-    ? `▶&nbsp; Resume · ${nx.seasons > 1 ? `S${nx.season} ` : ''}E${nx.ep}`
-    : '▶&nbsp; Open';
+  /* An announcement slide is about something that has not aired, so a play
+     glyph and the word "Open" promise what does not exist. Checking
+     rep.status is no good — the rep is the OWNED parent show (Black Clover,
+     FINISHED); it is the announced entry that is unreleased. */
+  const unreleased = currentView === 'announce' || rep.status === 'NOT_YET_RELEASED';
+  const resume = unreleased
+    ? 'View show'
+    : nx && prog.done > 0
+      ? `▶&nbsp; Resume · ${nx.seasons > 1 ? `S${nx.season} ` : ''}E${nx.ep}`
+      : '▶&nbsp; Open';
   return `
   <div class="bb-slide${i === bbIndex ? ' on' : ''}" data-slide="${i}"
        data-action="open-show" data-id="${sl.goId || rep.id}"
@@ -2128,7 +2135,7 @@ function announcementsHTML() {
             <span class="ann-title">${esc(r.title)}</span>
             <span class="ann-meta">${meta ? `${esc(meta)} · ` : ''}FROM <b>${esc(r.forShow.title)}</b></span>
           </span>
-          <span class="ann-act">${r.owned ? 'ON SHELF' : '+ ADD'}</span>
+          <span class="ann-act${r.owned ? '' : ' go'}">${r.owned ? 'ON SHELF' : '+ ADD'}</span>
         </button>`;
       }).join('')}
     </div>
