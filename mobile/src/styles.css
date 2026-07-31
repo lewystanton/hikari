@@ -1196,3 +1196,72 @@ h1,h2,h3{font-weight:800;letter-spacing:-.02em;font-family:var(--font-display)}
   border:1px solid rgba(255,255,255,.12); color:rgba(255,255,255,.86);
 }
 .sh-avail a:active{background:rgba(255,255,255,.1)}
+
+/* ——— browse (inside Search) ——— */
+.brbtn{
+  position:relative; flex:0 0 auto; width:44px; height:44px; border-radius:12px;
+  display:grid; place-items:center; border:1px solid rgba(255,255,255,.1);
+  background:rgba(255,255,255,.04); color:rgba(255,255,255,.72);
+}
+.brbtn svg{width:20px; height:20px}
+.brbtn.on{background:#fff; border-color:#fff; color:#111}
+.brbtn .bdg{
+  position:absolute; top:-5px; right:-5px; min-width:17px; height:17px; padding:0 4px;
+  border-radius:9px; background:var(--dub,#E9B45B); color:#111;
+  font-size:10px; font-weight:800; font-style:normal; display:grid; place-items:center;
+}
+.libbar.solo{display:flex; align-items:center; gap:10px}
+.libbar.solo .sfield{flex:1 1 auto; min-width:0}
+
+.brsec{padding:0 16px 18px}
+.brsec h4{
+  margin:0 0 10px; font-size:11px; font-weight:700; letter-spacing:.1em;
+  text-transform:uppercase; color:rgba(255,255,255,.45);
+}
+.brsec h4 span{color:rgba(255,255,255,.3); font-weight:600}
+.brchips{display:flex; flex-wrap:wrap; gap:7px}
+.brchips.picked{padding-bottom:12px; margin-bottom:12px; border-bottom:1px solid rgba(255,255,255,.07)}
+.brc{
+  padding:7px 13px; border-radius:999px; font-size:13px; line-height:1;
+  border:1px solid rgba(255,255,255,.12); background:transparent;
+  color:rgba(255,255,255,.7); font-family:inherit;
+}
+.brc.on{background:#fff; border-color:#fff; color:#111; font-weight:600}
+.brsearch{
+  width:100%; padding:11px 13px; margin-bottom:10px; border-radius:11px;
+  border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.05);
+  color:#fff; font-family:inherit; font-size:15px;
+}
+.brcat{border-top:1px solid rgba(255,255,255,.06)}
+.brcat:first-of-type{border-top:0}
+.brcat-h{
+  width:100%; display:flex; align-items:center; justify-content:space-between;
+  padding:12px 0; border:0; background:transparent; color:rgba(255,255,255,.8);
+  font-family:inherit; font-size:14px; text-align:left;
+}
+.brcat-h i{font-style:normal; font-size:12px; color:rgba(255,255,255,.35)}
+.brcat.open>.brcat-h{color:#fff; font-weight:600}
+.brcat .brchips{padding-bottom:14px}
+.brchk{display:flex; align-items:flex-start; gap:11px}
+.brchk input{margin-top:3px; width:18px; height:18px; accent-color:#fff}
+.brchk span{color:rgba(255,255,255,.8); font-size:14px; line-height:1.4}
+.brchk small{display:block; color:rgba(255,255,255,.4); font-size:12px; margin-top:2px}
+.sh-clr{
+  margin-left:auto; padding:5px 11px; border-radius:999px;
+  border:1px solid rgba(255,255,255,.14); background:transparent;
+  color:rgba(255,255,255,.7); font-family:inherit; font-size:12px; font-weight:600;
+}
+.sh-load-t{margin:0; padding:8px 0; color:rgba(255,255,255,.4); font-size:13px}
+.rcta{
+  flex:0 0 auto; align-self:center; padding:5px 11px; border-radius:999px;
+  border:1px solid rgba(255,255,255,.12); color:rgba(255,255,255,.62);
+  font-size:11px; font-weight:700; letter-spacing:.06em;
+}
+.br-more{
+  display:block; width:calc(100% - 32px); margin:16px; padding:14px;
+  border-radius:13px; border:1px solid rgba(255,255,255,.12);
+  background:rgba(255,255,255,.04); color:#fff; font-family:inherit;
+  font-size:14px; font-weight:600;
+}
+.br-more[disabled]{opacity:.5}
+.br-end{text-align:center; color:rgba(255,255,255,.35); font-size:13px; padding:18px 0}

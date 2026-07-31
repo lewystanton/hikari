@@ -29,7 +29,8 @@ import {
   searchAnime, seasonlessKey, buildRecord, fetchRecommendations, fetchDubFlags, gql, pickTags,
   traceMoeSearch, traceStamp, fetchBasics, fetchTraceQuota, alBudget
 } from './api.js';
-import { enrichRecord, isNative, fetchArtPool, fetchFranchise } from './enrich.js';
+import { enrichRecord, isNative, fetchArtPool, fetchFranchise, fetchShowRecs,
+  browseAnime, fetchFilterVocab } from './enrich.js';
 import { fetchUpcoming } from './api.js';
 import { I } from './icons.js';
 import { patch, schedule, onScrollFrame, tap, buzz, selectionTick, nextTick } from './render.js';
@@ -606,6 +607,51 @@ function watchRowHTML(g, cur, rec) {
   </div>`;
 }
 
+/* ——— "more like this" ———
+   Same source as the desktop: AniList's own per-show recommendations. Fetched
+   after the page paints so nothing waits on it, cached for the session, and
+   silently absent when a show has none rather than showing an empty rail. */
+const recsCache = new Map();
+const recsInflight = new Set();
+
+function recsHTML(rep) {
+  const list = recsCache.get(rep.id);
+  if (list && !list.length) return '';
+  return `<section class="dsec">
+    <h2 class="sec-t">More like this${list ? '' : ' <span class="sec-sub">loading…</span>'}</h2>
+    <div class="hrail worail">${list
+      ? list.map((m) => {
+        const owned = findGroup(m.id);
+        /* deliberately the SAME card as the watch order: the show page
+           should have one idea of what a show looks like */
+        return `<button class="woc" data-key="rec-${m.id}" data-act="rec-open"
+                        data-id="${m.id}" data-owner="${owned ? owned.rep.id : ''}">
+          <span class="wop">
+            ${m.cover ? `<img src="${esc(m.cover)}" loading="lazy" decoding="async" alt="">` : ''}
+            ${owned ? `<i class="wod">${I.check}</i>` : ''}
+          </span>
+          <b>${esc(m.title)}</b>
+          <small>${[m.year, m.format?.replace('_', ' ')].filter(Boolean).map(esc).join(' · ')}</small>
+        </button>`;
+      }).join('')
+      : Array.from({ length: 4 }, () =>
+        '<div class="skelc"><div class="skelc-cov"></div><div class="skelc-l"></div></div>').join('')}
+    </div>
+  </section>`;
+}
+
+function loadRecs(rep) {
+  if (!rep || recsCache.has(rep.id) || recsInflight.has(rep.id)) return;
+  recsInflight.add(rep.id);
+  fetchShowRecs(rep.id)
+    .then((list) => recsCache.set(rep.id, list))
+    .catch(() => recsCache.set(rep.id, []))       // do not retry in a loop
+    .finally(() => {
+      recsInflight.delete(rep.id);
+      if (route.name === 'show' && findGroup(route.id)?.rep.id === rep.id) syncScreens();
+    });
+}
+
 function watchOrderHTML(g, curSeason) {
   const fr = g.rep.franchise || [];
   /* The franchise graph now arrives after this page opens, so stand something
@@ -714,6 +760,7 @@ function detailScreen() {
   const all = viewables(g);
   const cur = all.find((se) => se.records.some((r) => r.id === route.season)) || resumeSeason(g, seasons) || all[0];
   hydrateStubs(cur);
+  loadRecs(g.rep);          // after paint; the rail stands in with a skeleton
   const rec = cur.records.find((r) => !r.stub) || cur.records[0] || g.rep;
   const multi = seasons.filter((se) => se.num).length > 1;
 
@@ -781,6 +828,7 @@ function detailScreen() {
       ? `<button class="dch tag" data-act="mtag-jump" data-g="${esc(c.t)}">${esc(c.t)}</button>`
       : `<span class="dch">${esc(c.t)}</span>`).join('')}</div>` : ''}
     ${deferHeavy ? '' : watchOrderHTML(g, cur)}
+    ${deferHeavy ? '' : recsHTML(g.rep)}
     ${deferHeavy ? '' : aboutHTML(rec, g)}
     <div class="endpad"></div>
   </div>`;
@@ -1051,6 +1099,153 @@ function discScreen() {
 }
 
 /* —— search —— */
+/* ————————————————— browse —————————————————
+   The desktop puts this on its own page with a sticky filter rail. Five tabs
+   is already a full tab bar on a phone, so it lives inside Search — which is
+   the "find something" surface anyway — as a filter sheet over a result list.
+   Same semantics as the desktop: every selection ANDs, dub is checked per
+   result because AniList cannot filter on it. */
+const BR_SORTS = [
+  ['POPULARITY_DESC', 'Most popular'], ['SCORE_DESC', 'Highest rated'],
+  ['TRENDING_DESC', 'Trending'], ['START_DATE_DESC', 'Newest']
+];
+const BR_FORMATS = ['TV', 'MOVIE', 'OVA', 'ONA', 'SPECIAL'];
+
+const br = {
+  genres: [], tags: [], formats: [], status: '', minScore: 0,
+  adult: false, dubOnly: false, sort: 'POPULARITY_DESC',
+  results: null, page: 0, hasNext: true, loading: false, error: null,
+  vocab: null, tagQ: '', openCats: new Set(), seq: 0
+};
+
+const brCount = () => br.genres.length + br.tags.length + br.formats.length
+  + (br.status ? 1 : 0) + (br.minScore ? 1 : 0) + (br.adult ? 1 : 0) + (br.dubOnly ? 1 : 0);
+const brActive = () => brCount() > 0;
+const brHasDub = (m) => (m.characters?.edges || []).some((e) => e.voiceActors?.length);
+
+async function brLoad(more = false) {
+  if (br.loading || (more && !br.hasNext)) return;
+  const seq = ++br.seq;
+  br.loading = true; br.error = null;
+  if (!more) { br.results = null; br.page = 0; br.hasNext = true; }
+  syncScreens();
+  try {
+    let added = 0;
+    const want = 30;
+    for (let hop = 0; hop < (br.dubOnly ? 4 : 1) && br.hasNext; hop++) {
+      const r = await browseAnime({
+        genres: br.genres, tags: br.tags, formats: br.formats,
+        status: br.status || null, minScore: br.minScore || null,
+        adult: br.adult, sort: [br.sort]
+      }, br.page + 1, want);
+      if (seq !== br.seq) return;
+      br.page = r.page; br.hasNext = r.hasNext;
+      const seen = new Set((br.results || []).map((m) => m.id));
+      const fresh = r.media.filter((m) => !seen.has(m.id))
+        .filter((m) => !br.dubOnly || brHasDub(m));
+      br.results = [...(br.results || []), ...fresh];
+      added += fresh.length;
+      if (added >= (br.dubOnly ? 12 : want)) break;
+    }
+  } catch (e) {
+    if (seq === br.seq) br.error = e.message || String(e);
+  } finally {
+    if (seq === br.seq) { br.loading = false; syncScreens(); }
+  }
+}
+
+async function brVocab() {
+  if (br.vocab) return;
+  try { br.vocab = await fetchFilterVocab(); }
+  catch { br.vocab = { genres: [], tags: [], categories: [] }; }
+  renderSheet();
+}
+
+function brResultsHTML() {
+  if (br.error) {
+    return `<div class="empty"><b>Couldn’t reach AniList</b><p>${esc(br.error)}</p>
+      <button class="btn-solid" data-act="br-retry">Try again</button></div>`;
+  }
+  if (!br.results && br.loading) {
+    return `<div class="rlist">${Array.from({ length: 6 }, () =>
+      '<div class="rskel"><i></i><span><b></b><em></em></span></div>').join('')}</div>`;
+  }
+  if (br.results && !br.results.length) {
+    return `<div class="empty"><b>Nothing matches</b>
+      <p>Every filter narrows the results — try removing one.</p></div>`;
+  }
+  const shelf = shelfFranchiseIds();
+  const rows = (br.results || []).map((m) => {
+    const owned = shelf.has(m.id);
+    return `
+    <button class="rrow" data-key="br-${m.id}" data-act="${owned ? 'open-owned' : 'preview'}" data-id="${m.id}">
+      <img src="${esc(m.coverImage?.large || '')}" loading="lazy" decoding="async" alt="">
+      <span class="rb">
+        <b>${esc(m.title.english || m.title.romaji)}${brHasDub(m) ? '<span class="rdub">DUB</span>' : ''}</b>
+        <small>${[m.seasonYear, m.format?.replace('_', ' '), m.episodes ? `${m.episodes} EP` : null,
+      m.averageScore ? `★ ${(m.averageScore / 10).toFixed(1)}` : null]
+      .filter(Boolean).map(esc).join('<i class="dot"></i>')}</small>
+      </span>
+      <span class="rcta">${owned ? 'ON SHELF' : 'VIEW'}</span>
+    </button>`;
+  }).join('');
+  return `<div class="rlist">${rows}</div>
+    ${br.hasNext ? `<button class="br-more" data-act="br-more" ${br.loading ? 'disabled' : ''}>
+      ${br.loading ? 'Loading…' : 'Load more'}</button>` : '<p class="br-end">That’s everything.</p>'}`;
+}
+
+function brFilterSheetHTML() {
+  const v = br.vocab;
+  const q = br.tagQ.trim().toLowerCase();
+  const cats = !v ? [] : v.categories
+    .map(([c, list]) => [c, list.filter((t) => (br.adult || !t.isAdult) && (!q || t.name.toLowerCase().includes(q)))])
+    .filter(([, l]) => l.length);
+  const chip = (kind, val, on, label) =>
+    `<button class="brc ${on ? 'on' : ''}" data-act="br-tog" data-kind="${kind}" data-v="${esc(val)}">${esc(label || val)}</button>`;
+  return `
+  <div class="sh-hd">
+    <b>Filters</b>
+    ${brCount() ? `<button class="sh-clr" data-act="br-clear">Clear ${brCount()}</button>` : ''}
+  </div>
+  <div class="brsec"><h4>Sort</h4>
+    <div class="brchips">${BR_SORTS.map(([k, l]) => chip('sort', k, br.sort === k, l)).join('')}</div></div>
+  <div class="brsec"><h4>Genre</h4>
+    <div class="brchips">${(v?.genres || []).map((g) => chip('genre', g, br.genres.includes(g))).join('')}</div></div>
+  <div class="brsec"><h4>Format</h4>
+    <div class="brchips">${BR_FORMATS.map((f) => chip('format', f, br.formats.includes(f), f.replace('_', ' '))).join('')}</div></div>
+  <div class="brsec"><h4>Audio</h4>
+    <div class="brchips">${chip('dub', '1', br.dubOnly, 'English dub only')}</div></div>
+  <div class="brsec"><h4>Tags ${v ? `<span>${v.tags.length}</span>` : ''}</h4>
+    <input class="brsearch" type="search" placeholder="Find a tag…" value="${esc(br.tagQ)}"
+           data-act="br-tagq" autocomplete="off" spellcheck="false">
+    ${br.tags.length ? `<div class="brchips picked">${br.tags.map((t) => chip('tag', t, true)).join('')}</div>` : ''}
+    ${!v ? '<p class="sh-load-t">Loading tags…</p>' : cats.map(([c, list]) => {
+      const open = br.openCats.has(c) || !!q;
+      return `<div class="brcat${open ? ' open' : ''}">
+        <button class="brcat-h" data-act="br-cat" data-c="${esc(c)}"><span>${esc(c)}</span><i>${list.length}</i></button>
+        ${open ? `<div class="brchips">${list.map((t) => chip('tag', t.name, br.tags.includes(t.name))).join('')}</div>` : ''}
+      </div>`;
+    }).join('')}
+  </div>
+  <div class="brsec"><label class="brchk">
+    <input type="checkbox" data-act="br-adult" ${br.adult ? 'checked' : ''}>
+    <span>Include adult titles<small>AniList hides these by default</small></span></label></div>
+  <div class="sh-btns"><button class="btn-solid" data-act="sheet-close">Show results</button></div>`;
+}
+
+/* The sheet is rebuilt on every keystroke, so focus and caret have to be put
+   back or the keyboard closes after one character. Screens bind their inputs
+   by id at creation; a sheet field needs delegation instead. */
+document.addEventListener('input', (e) => {
+  const el = e.target.closest?.('[data-act="br-tagq"]');
+  if (!el) return;
+  br.tagQ = el.value;
+  const caret = el.selectionStart;
+  renderSheet();
+  const again = document.querySelector('[data-act="br-tagq"]');
+  if (again && again !== el) { again.focus(); again.setSelectionRange(caret, caret); }
+});
+
 function findScreen() {
   const shelf = shelfFranchiseIds();
   let body = '';
@@ -1081,9 +1276,13 @@ function findScreen() {
     }).join('');
     body = rows ? `<div class="rlist">${rows}</div>`
       : `<div class="empty"><span class="empty-i">${I.find}</span><b>No results</b><p>Nothing on AniList matches “${esc(findQ)}”.</p></div>`;
+  } else if (brActive() || br.results) {
+    /* no text query but filters are on — browse takes the results area */
+    body = brResultsHTML();
   } else {
     body = `<div class="empty"><span class="empty-i">${I.find}</span><b>Search AniList</b>
-      <p>Anything you add here syncs straight to the desktop app.</p></div>`;
+      <p>Search by name, or filter the whole catalogue by genre and tag.</p>
+      <button class="btn-line" data-act="br-open">Browse by tag</button></div>`;
   }
   /* Seeing a clip and not knowing what it is is the whole reason this exists,
      so it sits above the results rather than behind a menu. */
@@ -1105,6 +1304,9 @@ function findScreen() {
                autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="search">
         ${findQ ? `<button class="sclr" data-act="fq-clear" aria-label="Clear">${I.x}</button>` : ''}
       </div>
+      <button class="brbtn ${brActive() ? 'on' : ''}" data-act="br-open" aria-label="Filters">
+        ${I.sliders}${brCount() ? `<i class="bdg">${brCount()}</i>` : ''}
+      </button>
     </div>
     ${idBlock}
     ${body}
@@ -2296,6 +2498,9 @@ function sheetMarkup() {
 
   if (sheet?.kind === 'keys') return keysSheetHTML(wrap);
 
+  /* 'tall' because 425 tags in 24 groups needs the room */
+  if (sheet?.kind === 'filters') return wrap('', brFilterSheetHTML(), 'tall');
+
   if (sheet?.kind === 'seasons') {
     const g = findGroup(route.id);
     if (!g) return '';
@@ -2776,6 +2981,47 @@ document.addEventListener('click', async (e) => {
         if (sheet) { sheet.busy = false; renderSheet(); }
         toast('Could not save — ' + (err.message || err), 'err');
       }
+      break;
+    }
+    case 'br-open':
+      tap();
+      brVocab();
+      sheet = { kind: 'filters' };
+      renderSheet(true);
+      break;
+    case 'br-cat': {
+      const c = b.dataset.c;
+      if (br.openCats.has(c)) br.openCats.delete(c); else br.openCats.add(c);
+      renderSheet();
+      break;
+    }
+    case 'br-tog': {
+      tap();
+      const k = b.dataset.kind, v = b.dataset.v;
+      if (k === 'sort') br.sort = v;
+      else if (k === 'dub') br.dubOnly = !br.dubOnly;
+      else {
+        const list = k === 'genre' ? br.genres : k === 'tag' ? br.tags : br.formats;
+        const i = list.indexOf(v);
+        if (i >= 0) list.splice(i, 1); else list.push(v);
+      }
+      renderSheet();
+      brLoad();
+      break;
+    }
+    case 'br-clear':
+      Object.assign(br, { genres: [], tags: [], formats: [], status: '', minScore: 0,
+        adult: false, dubOnly: false, tagQ: '' });
+      renderSheet();
+      brLoad();
+      break;
+    case 'br-more': brLoad(true); break;
+    case 'br-retry': br.hasNext = true; brLoad(); break;
+    case 'rec-open': {
+      tap();
+      const owner = b.dataset.owner;
+      if (owner) navigate({ name: 'show', id: Number(owner) }, 'push');
+      else openPreview(Number(b.dataset.id));
       break;
     }
     case 'sheet-add-fr':

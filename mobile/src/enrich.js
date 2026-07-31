@@ -495,3 +495,97 @@ export async function enrichRecord(rec) {
     fetchedAt: Date.now()
   };
 }
+
+/* ——— "more like this" ———
+   AniList carries per-show recommendations ranked by community rating, which
+   is a real "people who liked this" list rather than a genre intersection
+   standing in for one. Mirrors the desktop fetchRecommendations, narrowed to
+   one show since the phone only ever asks about the page you are on. */
+const RECS_QUERY = `
+query ($id: Int) {
+  Media(id: $id, type: ANIME) {
+    recommendations(perPage: 12, sort: RATING_DESC) {
+      nodes {
+        mediaRecommendation {
+          id
+          title { romaji english }
+          format
+          seasonYear
+          coverImage { large }
+        }
+      }
+    }
+  }
+}`;
+
+export async function fetchShowRecs(mediaId) {
+  const d = await gql(RECS_QUERY, { id: mediaId }, { bg: false });
+  return (d?.Media?.recommendations?.nodes || [])
+    .map((n) => n?.mediaRecommendation)
+    .filter(Boolean)
+    .map((m) => ({
+      id: m.id,
+      title: m.title.english || m.title.romaji || '?',
+      year: m.seasonYear || null,
+      format: m.format || '',
+      cover: m.coverImage?.large || ''
+    }));
+}
+
+/* ——— browse ———
+   Mirrors the desktop src/api.js. Two vocabularies matter: 19 genres and 425
+   tags in 24 categories, and what a person calls "tags" spans both — harem is
+   three tags and no genre. genre_in and tag_in are both AND, and AND with
+   each other, so a multi-select narrows with no client-side filtering.
+   AniList clamps perPage at 50 silently, so larger sizes chain requests. */
+const BROWSE_QUERY = `
+query ($page: Int, $perPage: Int, $genres: [String], $tags: [String],
+       $formats: [MediaFormat], $status: MediaStatus, $sort: [MediaSort],
+       $minScore: Int, $adult: Boolean) {
+  Page(page: $page, perPage: $perPage) {
+    pageInfo { currentPage hasNextPage }
+    media(type: ANIME, genre_in: $genres, tag_in: $tags, format_in: $formats,
+          status: $status, sort: $sort, averageScore_greater: $minScore, isAdult: $adult) {
+      id idMal
+      title { romaji english }
+      format status seasonYear episodes averageScore
+      coverImage { large color }
+      # node is NOT optional — without it AniList returns voiceActors: null
+      # for every edge, so nothing looks dubbed.
+      characters(perPage: 4, sort: ROLE) {
+        edges { node { id } voiceActors(language: ENGLISH) { id } }
+      }
+    }
+  }
+}`;
+
+export async function browseAnime(f = {}, page = 1, perPage = 50) {
+  const vars = { page, perPage: Math.min(perPage, 50), sort: f.sort || ['POPULARITY_DESC'] };
+  if (f.genres?.length) vars.genres = f.genres;
+  if (f.tags?.length) vars.tags = f.tags;
+  if (f.formats?.length) vars.formats = f.formats;
+  if (f.status) vars.status = f.status;
+  if (f.minScore) vars.minScore = Number(f.minScore) - 1;
+  if (f.adult) vars.adult = true;          // omitting it keeps AniList's default
+  const d = await gql(BROWSE_QUERY, vars, { bg: false });
+  return { page: d.Page.pageInfo.currentPage, hasNext: d.Page.pageInfo.hasNextPage, media: d.Page.media || [] };
+}
+
+let vocabCache = null;
+export async function fetchFilterVocab() {
+  if (vocabCache) return vocabCache;
+  const d = await gql(`{ GenreCollection MediaTagCollection { name category isAdult } }`, {}, { bg: false });
+  const tags = (d.MediaTagCollection || []).filter((t) => t.category);
+  const byCat = new Map();
+  for (const t of tags) {
+    if (!byCat.has(t.category)) byCat.set(t.category, []);
+    byCat.get(t.category).push(t);
+  }
+  for (const l of byCat.values()) l.sort((a, b) => a.name.localeCompare(b.name));
+  vocabCache = {
+    genres: (d.GenreCollection || []).filter((g) => g !== 'Hentai'),
+    tags,
+    categories: [...byCat.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+  };
+  return vocabCache;
+}
