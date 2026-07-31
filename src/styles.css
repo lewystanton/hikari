@@ -2393,3 +2393,14 @@ h1.display em{font-style:normal;color:var(--muted)}
 /* the sentinel is an invisible tripwire below the grid, not a spacer */
 .browse-sentinel{height:1px; margin:0; pointer-events:none}
 .browse-note:empty, .browse-foot:empty{display:none}
+
+/* .field only ever styled inputs; a select in one inherited nothing */
+.field select{
+  width:100%; padding:9px 11px; border-radius:var(--r-sm); cursor:pointer;
+  border:1px solid var(--line); background:var(--surface); color:var(--ink);
+  font-family:inherit; font-size:13px;
+}
+.field select:focus{outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft)}
+.field.row{display:flex; align-items:center; justify-content:space-between; gap:16px}
+.field.row label{margin-bottom:0}
+.field.row select{width:auto; min-width:110px}

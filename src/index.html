@@ -213,6 +213,20 @@
         </div>
         <p class="set-hint">Export writes shows, watched history, artwork picks and keys to a JSON file.
         Import merges a backup into this library — nothing is deleted.</p>
+        <p class="mini-label" style="margin-top:16px">Browse</p>
+        <div class="field row">
+          <label for="browsePerLoad">Results per load</label>
+          <select id="browsePerLoad">
+            <option value="30">30</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+            <option value="150">150</option>
+          </select>
+        </div>
+        <p class="set-hint">How many titles Browse fetches each time it loads, including when you scroll.
+        AniList serves at most 50 per request, so larger sizes are fetched as several requests against a
+        shared 30-per-minute budget.</p>
+
         <p class="mini-label" style="margin-top:16px">Notifications</p>
         <label class="chk-row"><input type="checkbox" id="notifyEps" checked> Notify me when a tracked show airs a new episode</label>
         <p class="set-hint">Windows notifications while Hikari is running — checked on launch and every half hour.</p>

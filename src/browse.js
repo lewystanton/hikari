@@ -27,6 +27,9 @@
   ];
   const FORMATS = ['TV', 'TV_SHORT', 'MOVIE', 'OVA', 'ONA', 'SPECIAL'];
   const THIS_YEAR = new Date().getFullYear();
+  /* Results per load. AniList caps a request at 50, so anything above that
+     is chained rather than asked for in one go. */
+  const perLoad = () => Number(appSettings.browsePerLoad) || 50;
 
   const st = {
     genres: [], tags: [], formats: [], season: '', year: '', status: '',
@@ -70,13 +73,16 @@
     render();
     try {
       let added = 0;
-      for (let hop = 0; hop < (st.dubOnly ? MAX_CHAIN : 1) && st.hasNext; hop++) {
+      const want = perLoad();
+      const size = Math.min(want, 50);
+      const hops = Math.max(Math.ceil(want / size), st.dubOnly ? MAX_CHAIN : 1);
+      for (let hop = 0; hop < hops && st.hasNext; hop++) {
         const r = await browseAnime({
           genres: st.genres, tags: st.tags, formats: st.formats,
           season: st.season || null, year: st.year || null,
           status: st.status || null, minScore: st.minScore || null,
           adult: st.adult, sort: [st.sort]
-        }, st.page + 1);
+        }, st.page + 1, size);
         if (seq !== st.seq) return;                  // a newer filter won
         st.page = r.page;
         st.hasNext = r.hasNext;
@@ -86,7 +92,7 @@
           .filter((m) => !st.dubOnly || hasEnglishDub(m));
         st.results.push(...fresh);
         added += fresh.length;
-        if (added >= MIN_YIELD) break;
+        if (added >= (st.dubOnly ? Math.min(want, MIN_YIELD) : want)) break;
       }
     } catch (e) {
       if (seq === st.seq) st.error = e.message || String(e);

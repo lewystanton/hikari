@@ -1231,10 +1231,10 @@ async function fetchTraceQuota(apiKey) {
    with no client-side filtering. pageInfo.total caps at 5000, so it is
    reported as a floor, never as a count. */
 const BROWSE_QUERY = `
-query ($page: Int, $genres: [String], $tags: [String], $formats: [MediaFormat],
+query ($page: Int, $perPage: Int, $genres: [String], $tags: [String], $formats: [MediaFormat],
        $season: MediaSeason, $year: Int, $status: MediaStatus, $sort: [MediaSort],
        $minScore: Int, $adult: Boolean, $search: String) {
-  Page(page: $page, perPage: 30) {
+  Page(page: $page, perPage: $perPage) {
     pageInfo { currentPage hasNextPage total }
     media(type: ANIME, genre_in: $genres, tag_in: $tags, format_in: $formats,
           season: $season, seasonYear: $year, status: $status, sort: $sort,
@@ -1263,8 +1263,12 @@ query ($page: Int, $genres: [String], $tags: [String], $formats: [MediaFormat],
   }
 }`;
 
-async function browseAnime(f = {}, page = 1) {
-  const vars = { page, sort: f.sort || ['POPULARITY_DESC'] };
+/* AniList silently clamps perPage at 50 — asking for 100 returns 50 with no
+   error — so anything larger is served by chaining pages, not by asking. */
+const BROWSE_MAX_PER_PAGE = 50;
+
+async function browseAnime(f = {}, page = 1, perPage = 50) {
+  const vars = { page, perPage: Math.min(perPage, BROWSE_MAX_PER_PAGE), sort: f.sort || ['POPULARITY_DESC'] };
   if (f.genres?.length) vars.genres = f.genres;
   if (f.tags?.length) vars.tags = f.tags;
   if (f.formats?.length) vars.formats = f.formats;

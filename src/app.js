@@ -2804,7 +2804,14 @@ function episodesHTML(root, s) {
 async function mergeEpisodesInto(s) {
   const anilistEps = (s.episodesList || []).filter((e) => e.number != null);
   const jikanRows = await fetchJikanEpisodes(s.idMal);
-  const tvdb = await fetchTvdbEpisodes(s.idMal);
+  /* The air date is what aligns a split cour: TVDB numbers Slime S2 as one
+     24-episode season while AniList splits it into two 12s, so without a
+     date to anchor on, Part 2 silently gets Part 1's stills. enrichShowBase
+     passed this from the start; THIS path — the one that re-enriches records
+     you already have — did not, which is why the fix never reached them.
+     Falls back to the record's own start date when Jikan has no rows. */
+  const firstAired = jikanRows.find((r) => r.number === 1)?.aired || s.startDate || null;
+  const tvdb = await fetchTvdbEpisodes(s.idMal, firstAired);
   const kitsu = tvdb.size >= (s.episodes || 1) ? { count: 0, map: new Map() } : await fetchKitsuEpisodes(s.idMal);
   s.episodesList = mergeEpisodes(s.episodes, anilistEps, jikanRows, kitsu, tvdb);
   s.epSources = [
@@ -2921,6 +2928,14 @@ function renderDetail() {
         ? x.body
         : `<p class="no-eps part-wait"><span class="spinner mini"></span> LOADING PART ${i + 1}…</p>`}`).join('')
   };
+  /* A split cour renders BOTH parts at once, but only the viewed record was
+     ever version-checked — so Part 2 kept episode data written before the
+     TVDB air-date alignment and showed Part 1's stills against its own
+     (correct) titles. Every part on screen gets checked. */
+  for (const x of epParts) {
+    if (x.loaded && (x.rec.epv || 0) < EP_VERSION) upgradeEpisodes(x.rec);
+  }
+
   /* unloaded cours fetch themselves, then the page re-renders */
   for (const x of epParts) {
     if (x.loaded) continue;
@@ -3749,6 +3764,7 @@ function openSettings() {
   $('#traceKey').value = appSettings.traceKey || '';
   $('#notifyEps').checked = appSettings.notifyEps !== false;
   $('#autoScan').checked = appSettings.autoScan !== false;
+  $('#browsePerLoad').value = String(appSettings.browsePerLoad || 50);
   renderMediaRoots();
   fillAbout();
   fillRemoteBox();          // outside the signed-in block — it works either way
@@ -3825,6 +3841,7 @@ async function saveSettingsModal() {
   refreshTraceQuota();
   appSettings.notifyEps = $('#notifyEps').checked;
   appSettings.autoScan = $('#autoScan').checked;
+  appSettings.browsePerLoad = Number($('#browsePerLoad').value) || 50;
   await window.hikari.saveSettings(appSettings);
   closeSettings();
   toast(appSettings.tmdbKey || appSettings.fanartKey
