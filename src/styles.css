@@ -2531,3 +2531,26 @@ h1.display em{font-style:normal;color:var(--muted)}
 @media (max-width:1180px){
   .billboard .bb-artwrap::before{display:none}
 }
+
+/* ── hero, second pass ─────────────────────────────────────────────────────
+   Deriving the art's width from the hero's HEIGHT was the mistake. A 430px
+   band makes 16:9 art 765px wide no matter how wide the window is, so the
+   blur went from a 565px edge treatment at 1400px to 1714px of dead centre
+   at 2560px — the art ended up stranded in a corner.
+
+   Cap the art box's ASPECT instead and let the hero gain height with width.
+   Both then scale together: the art holds ~60-70% of the hero at every size
+   and the crop is constant (a 2.5:1 box shows 71% of a 16:9 still, whatever
+   the monitor), rather than degrading the wider you go. */
+.billboard{height:clamp(380px, 24vw, 560px)}
+.billboard img.bb-art{
+  aspect-ratio:2.5; height:100%; width:auto; max-width:74%;
+  /* the old mask began at 82%, which chewed the logo on art that puts its
+     title at the right edge — Witch Watch did exactly that */
+  -webkit-mask-image:linear-gradient(90deg, transparent 0%, #000 22%, #000 94%, transparent 100%);
+  mask-image:linear-gradient(90deg, transparent 0%, #000 22%, #000 94%, transparent 100%);
+}
+@media (max-width:1180px){
+  .billboard{height:min(52vh,430px)}
+  .billboard img.bb-art{aspect-ratio:auto; max-width:none}
+}
