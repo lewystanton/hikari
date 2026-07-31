@@ -2458,3 +2458,76 @@ h1.display em{font-style:normal;color:var(--muted)}
 .rec-skel .skel-card{flex:0 0 150px}
 .rec-card .rel-cta{background:rgba(0,0,0,.66)}
 .rec-card:hover .rel-cta{background:var(--ink); color:var(--bg)}
+
+/* ── billboard: blurred backdrop, uncropped art ────────────────────────────
+   The full-bleed version had a fixed height and a fluid width, so the box
+   aspect ran away with the window: 3.1:1 at 1400px showing 57% of the art,
+   but 5.8:1 at 2560px showing only 31% of it. A 16:9 still crammed into a
+   5.8:1 band can only be centre-cropped to a sliver, which is why a wide
+   monitor turned every hero into a close-up of somebody's eye.
+
+   A 430px band on a 2560px screen simply cannot hold 16:9 art. So stop
+   trying: the same image fills the width blurred and darkened, and the crisp
+   copy sits at its NATURAL ratio on the right, masked so it fades into the
+   backdrop on the left and into the page on the right. Nothing is cropped at
+   any width, and the width is still filled. */
+.billboard img.bb-blur{
+  position:absolute; inset:0; width:100%; height:100%;
+  object-fit:cover; object-position:center 30%;
+  transform:scale(1.15);                 /* hide the soft edges the blur leaves */
+  /* the wash below already darkens this area; stacking a heavy brightness
+     cut on top left the backdrop reading as flat black rather than as the
+     show's colour, which is the entire point of having it */
+  filter:blur(46px) saturate(1.5) brightness(.72);
+  z-index:0;
+}
+.billboard img.bb-art{
+  position:absolute; inset:auto 0 0 auto; top:0; left:auto;
+  height:100%; width:auto;
+  /* a pathologically wide banner (AniList ships 1900x400) would otherwise be
+     2000px+ at this height — cover it into a sane panel instead */
+  max-width:min(78%, 1180px);
+  object-fit:cover; object-position:center 30%;
+  z-index:1;
+  -webkit-mask-image:linear-gradient(90deg, transparent 0%, #000 26%, #000 82%, transparent 100%);
+  mask-image:linear-gradient(90deg, transparent 0%, #000 26%, #000 82%, transparent 100%);
+}
+.billboard:hover img.bb-art{transform:scale(1.03)}
+.billboard .bb-wash{z-index:2}
+/* the scrim no longer has to fight a full-bleed image on the left, so it can
+   be lighter and let the blurred colour through */
+.billboard .bb-wash{
+  background:
+    linear-gradient(90deg, rgba(10,10,12,.84) 0%, rgba(10,10,12,.58) 34%,
+                    rgba(10,10,12,.18) 60%, transparent 82%),
+    linear-gradient(0deg, rgba(10,10,12,.9) 0%, rgba(10,10,12,.2) 40%, transparent 64%),
+    linear-gradient(180deg, rgba(10,10,12,.5) 0%, transparent 24%);
+}
+.billboard .bb-body{z-index:3}
+/* narrow windows: the art panel would crowd the copy, so let it go full-bleed
+   again — at these widths the box aspect is tame enough not to over-crop */
+@media (max-width:1180px){
+  .billboard img.bb-art{
+    inset:0; width:100%; height:100%; max-width:none;
+    -webkit-mask-image:none; mask-image:none;
+  }
+  .billboard img.bb-blur{display:none}
+}
+
+/* The backdrop's brightness was following the source image: Slime's dark key
+   art blurred to near-black, while a mostly-white cover blurred to a bright
+   haze. Tuning `brightness` alone cannot fix both — it scales, it does not
+   clamp. A fixed veil over the blur compresses the range instead, so a dark
+   show and a white one land in the same place. */
+.billboard .bb-artwrap::before{
+  content:''; position:absolute; inset:0; z-index:1;
+  background:rgba(9,9,12,.55);
+  pointer-events:none;
+}
+.billboard img.bb-blur{filter:blur(46px) saturate(1.6) brightness(.92); z-index:0}
+.billboard img.bb-art{z-index:2}
+.billboard .bb-wash{z-index:3}
+.billboard .bb-body{z-index:4}
+@media (max-width:1180px){
+  .billboard .bb-artwrap::before{display:none}
+}

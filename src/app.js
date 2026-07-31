@@ -861,6 +861,7 @@ function slideHTML(sl, i) {
        data-action="open-show" data-id="${sl.goId || rep.id}"
        style="--show:${esc(rep.coverColor || '#E4A15D')}">
     <div class="bb-artwrap">
+      <img class="bb-blur" src="${esc(art)}" alt="" aria-hidden="true"${i === 0 ? '' : ' loading="lazy"'}>
       <img class="bb-art" src="${esc(art)}" alt=""${i === 0 ? '' : ' loading="lazy"'}>
       <div class="bb-wash"></div>
     </div>
