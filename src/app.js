@@ -314,6 +314,24 @@ function franchiseIds(s) {
   (s.franchise || []).forEach((f) => ids.add(f.id));
   return ids;
 }
+
+/* ——— do you actually own this entry? ———
+   franchiseIds() is the FAMILY: every relative of a record, including
+   spin-offs, chibi shorts and rival adaptations that the two-layer model
+   calls separate SHOWS. Using it to answer "is this on my shelf" claims 746
+   ids for 213 records, 165 of which are different shows — so Browse badged
+   "Squishy! Black Clover" as owned, and worse, addByIdFast short-circuited
+   on it and silently added nothing when you asked for a spin-off by name.
+
+   Ownership is the SHOW layer: same continuity as something on the shelf.
+   seasonEntriesOf falls back to the whole list for pre-frv-4 records, so
+   un-migrated saves keep the old, broader behaviour rather than losing it. */
+function ownerOfMedia(mediaId) {
+  const direct = library.find((x) => x.id === mediaId);
+  if (direct) return direct;
+  return library.find((x) => (x.franchise || []).some((f) => f.id === mediaId)
+    && seasonEntriesOf(x.franchise, x.id).some((f) => f.id === mediaId)) || null;
+}
 function setsIntersect(a, b) {
   for (const x of a) if (b.has(x)) return true;
   return false;
@@ -1737,8 +1755,7 @@ let previewRec = null;
    gets the page up; the franchise graph follows in the background exactly as
    it does for a real add, so the watch order fills in behind its skeleton. */
 async function goPreview(mediaId) {
-  const owned = library.find((x) => x.id === mediaId)
-    || library.find((x) => franchiseIds(x).has(mediaId));
+  const owned = ownerOfMedia(mediaId);
   if (owned) { goDetail(owned.id); return; }          // already yours — show the real thing
 
   if (previewRec?.id !== mediaId) {
@@ -2361,8 +2378,7 @@ function recsHTML(root) {
       <span class="cnt">${list ? `${list.length} SUGGESTED` : 'FROM ANILIST'}</span></h3>
     ${list
       ? railHTML(list.map((m) => {
-        const owner = library.find((x) => x.id === m.id)
-          || library.find((x) => franchiseIds(x).has(m.id));
+        const owner = ownerOfMedia(m.id);
         return `
         <div class="rel-card rec-card" data-action="rec-open" data-id="${m.id}"
              data-owner="${owner ? owner.id : ''}">
@@ -3275,7 +3291,10 @@ async function addById(mediaId) {
   library.push(record);
   consolidateLibrary();
   persist();
-  return library.find((x) => franchiseIds(x).has(record.id)) || record;
+  /* consolidateLibrary may have folded it into a root — return whatever now
+     represents it, but by SHOW, or a freshly added spin-off resolves to its
+     parent and the UI navigates away from what you just asked for */
+  return ownerOfMedia(record.id) || record;
 }
 
 /* Fast add: skip the episode merge (the background upgraders fill that in
@@ -3290,7 +3309,9 @@ async function addById(mediaId) {
 async function addByIdFast(mediaId, { wholeFranchise = false } = {}) {
   const existing = library.find((x) => x.id === mediaId);
   if (existing) return existing;
-  const merged = library.find((x) => franchiseIds(x).has(mediaId));
+  /* only short-circuit when it is genuinely the SAME show — a spin-off asked
+     for by name must actually be added, not silently swallowed */
+  const merged = ownerOfMedia(mediaId);
   if (merged) return merged;
 
   let id = mediaId;
@@ -3329,7 +3350,7 @@ async function addByIdFast(mediaId, { wholeFranchise = false } = {}) {
   if (record.enriching) window.hikariJobs.add('franchise', { id: record.id },
     { key: 'franchise:' + record.id, priority: 'interactive', label: 'Seasons · ' + record.title });
   if (id !== mediaId) toast(`Added ${record.title} — every season is in its watch order`);
-  return library.find((x) => franchiseIds(x).has(id)) || record;
+  return ownerOfMedia(id) || record;
 }
 
 /* ———————————————————— search palette ———————————————————— */
@@ -3516,8 +3537,7 @@ async function pickResult(idx, { wholeFranchise = false } = {}) {
   if (!m) return;
 
   /* on shelf — directly or as a season of an owned franchise */
-  const owner = library.find((x) => x.id === m.id)
-    || library.find((x) => franchiseIds(x).has(m.id));
+  const owner = ownerOfMedia(m.id);
   if (owner) {
     closeSearch();
     goDetail(owner.id);
@@ -5244,7 +5264,7 @@ document.addEventListener('click', async (e) => {
     case 'bb-go': bbShow(+el.dataset.i); break;
     case 'open-announce': {
       const id = +el.dataset.id;
-      const owner = library.find((x) => x.id === id) || library.find((x) => franchiseIds(x).has(id));
+      const owner = ownerOfMedia(id);
       if (owner) { goDetail(owner.id); if (owner.id !== id) switchView(id).catch(() => {}); break; }
       el.classList.add('busy');
       el.querySelector('.ann-act').textContent = 'ADDING…';
@@ -5255,7 +5275,7 @@ document.addEventListener('click', async (e) => {
     case 'family-close': closeFamily(); break;
     case 'family-open': {
       const id = +el.dataset.id;
-      const owner = library.find((x) => x.id === id) || library.find((x) => franchiseIds(x).has(id));
+      const owner = ownerOfMedia(id);
       closeFamily();
       if (owner) { goDetail(owner.id); if (owner.id !== id) switchView(id).catch(() => {}); }
       break;

@@ -216,8 +216,7 @@
   }
 
   function cardHTML(m) {
-    const owner = library.find((x) => x.id === m.id)
-      || library.find((x) => franchiseIds(x).has(m.id));
+    const owner = ownerOfMedia(m.id);
     const title = m.title.english || m.title.romaji || m.title.native || '?';
     const meta = [fmtFormat(m.format), m.seasonYear, m.episodes ? `${m.episodes} EP` : null]
       .filter(Boolean).join(' · ');

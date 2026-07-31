@@ -215,11 +215,18 @@ function groupsSorted() {
   }[libSort] || ((a, b) => (b.rep.year || 0) - (a.rep.year || 0) || byTitle(a, b));
   return groups.sort(cmp);
 }
+/* The franchise array is the FAMILY — it contains spin-offs, chibi shorts and
+   rival adaptations that the two-layer model calls separate SHOWS. Treating
+   all of them as "on the shelf" over-claimed 746 ids for 213 records on the
+   desktop, 165 of them different shows, which both mislabelled search rows
+   and made adding a spin-off silently do nothing. Ownership is the SHOW
+   layer. seasonEntriesOf falls back to the whole list for pre-frv-4 records,
+   so un-migrated saves keep the old, broader behaviour rather than losing it. */
 function shelfFranchiseIds() {
   const ids = new Set();
   for (const r of state.library) {
     ids.add(r.id);
-    (r.franchise || []).forEach((f) => ids.add(f.id));
+    seasonEntriesOf(r.franchise || [], r.id).forEach((f) => ids.add(f.id));
     (r.seasons || []).forEach((f) => ids.add(f.id));
   }
   return ids;
