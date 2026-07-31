@@ -2319,15 +2319,118 @@ function dubInfo(rec) {
 }
 
 /* synopsis block — the left column's opener */
+/* Genres alone are too broad to mean "like this" — Solo Leveling's
+   Action/Adventure/Fantasy returns One Piece and Fullmetal Alchemist. Three
+   tags is too tight: five results, four of them Solo Leveling itself. Two
+   tags lands on Black Clover and DanMachi, which is the intent. Spoiler tags
+   are excluded, and rank orders them by how strongly the community agrees. */
+function likeThisFilters(s) {
+  /* pickTags() already did the hard part when the record was built: spoilers
+     and adult tags dropped, rank >= 40, sorted strongest first. So the top
+     two entries of `tags` ARE the two strongest themes.
+
+     Fall back to the root: on a multi-season show the VIEWED record is a
+     peek, and a peek is whatever AniList returned for that season — often
+     with genres but no tags, which silently dropped half the filter and
+     sent nothing but genres to Browse. */
+  const root = detailRoot();
+  const pick = (k) => {
+    const own = (s?.[k] || []).filter((v) => typeof v === 'string');
+    if (own.length) return own;
+    return (root?.[k] || []).filter((v) => typeof v === 'string');
+  };
+  return { genres: pick('genres').slice(0, 3), tags: pick('tags').slice(0, 2) };
+}
+
+/* ——— "more like this", as a rail ———
+   AniList carries per-show `recommendations` ranked by community rating, and
+   the app already queries them for the Discover pool — so this is a real
+   list of what people say is similar, not a genre intersection standing in
+   for one. The Browse hand-off beside the synopsis stays: recommendations
+   cannot be filtered (by dub, year, format), and that is what Browse is for.
+   Fetched once per show, cached for the session. */
+const recsCache = new Map();          // mediaId -> [{ id, title, ... }]
+const recsInflight = new Set();
+
+function recsHTML(root) {
+  const list = recsCache.get(root.id);
+  if (list && !list.length) return '';            // asked, genuinely nothing
+  return `
+  <div class="dsec" data-recs="${root.id}">
+    <h3 class="sh">More like this
+      <span class="cnt">${list ? `${list.length} SUGGESTED` : 'FROM ANILIST'}</span></h3>
+    ${list
+      ? railHTML(list.map((m) => {
+        const owner = library.find((x) => x.id === m.id)
+          || library.find((x) => franchiseIds(x).has(m.id));
+        return `
+        <div class="rel-card rec-card" data-action="rec-open" data-id="${m.id}"
+             data-owner="${owner ? owner.id : ''}">
+          <div class="rel-cover">
+            ${m.cover ? `<img src="${esc(m.cover)}" alt="" loading="lazy" decoding="async">` : ''}
+            ${owner ? '<span class="wo-done" title="On your shelf">✓</span>' : ''}
+            <span class="rel-cta">${owner ? 'OPEN' : 'PREVIEW'}</span>
+          </div>
+          <p>${esc(m.title)}</p>
+          <span class="rel-year">${m.year || 'TBA'}${m.format ? ` · ${esc(fmtFormat(m.format))}` : ''}</span>
+        </div>`;
+      }).join(''))
+      : `<div class="rec-skel">${Array.from({ length: 6 }, () =>
+        '<div class="skel-card"><div class="skel-cover"></div><div class="skel-line"></div></div>').join('')}</div>`}
+  </div>`;
+}
+
+/* fetched after paint so the page never waits on it */
+function loadRecs(root) {
+  if (recsCache.has(root.id) || recsInflight.has(root.id)) return;
+  recsInflight.add(root.id);
+  fetchRecommendations([root.id])
+    .then((map) => {
+      const nodes = map.get(root.id) || [];
+      recsCache.set(root.id, nodes
+        .map((n) => n.mediaRecommendation)
+        .filter(Boolean)
+        .map((m) => ({
+          id: m.id,
+          title: m.title.english || m.title.romaji || '?',
+          year: m.seasonYear || null, format: m.format || '',
+          cover: m.coverImage?.large || ''
+        }))
+        .slice(0, 14));
+    })
+    .catch(() => recsCache.set(root.id, []))       // don't retry in a loop
+    .finally(() => {
+      recsInflight.delete(root.id);
+      if (detailId === root.id && detailScreen.classList.contains('active')) {
+        const st = detailScreen.scrollTop;
+        renderDetail();
+        detailScreen.scrollTop = st;
+      }
+    });
+}
+
 function synopsisHTML(s) {
   const synopsis = cleanSynopsis(s.description);
+  const like = likeThisFilters(s);
+  const chips = [...like.genres, ...like.tags];
   return `
-  <div class="d-syn">
-    <p class="mini-label">Synopsis</p>
-    ${synopsis
+  <div class="d-synrow">
+    <div class="d-syn">
+      <p class="mini-label">Synopsis</p>
+      ${synopsis
       ? `<p class="description clamped" id="desc">${esc(synopsis)}</p>
          <button class="more-toggle" data-action="toggle-desc">Read more</button>`
       : '<p class="no-eps">No synopsis available.</p>'}
+    </div>
+    ${chips.length ? `
+    <aside class="d-like">
+      <p class="mini-label">More like this</p>
+      <p class="dl-hint">Browse everything that shares its genres and strongest themes.</p>
+      <div class="dl-chips">${chips.map((c) => `<span>${esc(c)}</span>`).join('')}</div>
+      <button class="dl-go" data-action="like-this" data-id="${s.id}">
+        Find similar shows <span aria-hidden="true">&rarr;</span>
+      </button>
+    </aside>` : ''}
   </div>`;
 }
 
@@ -2935,6 +3038,8 @@ function renderDetail() {
         ? x.body
         : `<p class="no-eps part-wait"><span class="spinner mini"></span> LOADING PART ${i + 1}…</p>`}`).join('')
   };
+  loadRecs(root);
+
   /* A split cour renders BOTH parts at once, but only the viewed record was
      ever version-checked — so Part 2 kept episode data written before the
      TVDB air-date alignment and showed Part 1's stills against its own
@@ -3036,6 +3141,7 @@ function renderDetail() {
             </div>
 
             ${watchOrderHTML(fr, root, s)}
+            ${recsHTML(root)}
             ${!fr ? `
             <div class="dsec">
               <h3 class="sh">Franchise <span class="cnt"><span class="spinner mini"></span> MAPPING SEASONS…</span></h3>
@@ -5411,6 +5517,24 @@ document.addEventListener('click', async (e) => {
         el.classList.remove('busy');
         toast('Could not add — ' + (err.message || err), 'err');
       }
+      break;
+    }
+    case 'rec-open': {
+      const owner = el.dataset.owner;
+      if (owner) goDetail(Number(owner));
+      else goPreview(Number(el.dataset.id));
+      break;
+    }
+    case 'like-this': {
+      const rec = detailRoot() && getViewRecord();
+      if (!rec) break;
+      const f = likeThisFilters(rec);
+      /* Switch through the real nav button first: it owns currentView, the
+         active pill and the screen swap, and it creates #browseHost — which
+         openWith needs to exist before it can paint anything. */
+      document.querySelector('.nav-btn[data-view="browse"]')?.click();
+      window.hikariBrowse.openWith(f);
+      toast(`Browsing ${[...f.genres, ...f.tags].slice(0, 3).join(' · ')}`);
       break;
     }
     case 'jobs-pill': toggleJobsPanel(); break;

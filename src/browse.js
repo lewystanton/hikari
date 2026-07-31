@@ -407,6 +407,29 @@
       if (!st.booted) { st.booted = true; refetch(0); }
       else render();
     },
+    /* "More like this" from a show's page: replace the filter set rather than
+       adding to it, so arriving here twice from different shows does not
+       silently AND them together into nothing. */
+    openWith({ genres = [], tags = [], sort = 'POPULARITY_DESC' } = {}) {
+      Object.assign(st, {
+        genres: [...genres], tags: [...tags], formats: [], season: '', year: '',
+        status: '', minScore: 0, adult: false, dubOnly: false, sort,
+        tagQuery: '', openCats: new Set(), booted: true
+      });
+      refetch(0);
+      /* Open the groups the incoming tags live in, so it is obvious WHY these
+         results came back and what to loosen. This has to wait for the
+         vocabulary — categories are not known until it lands, and reading
+         st.vocab synchronously here just gave an empty set. */
+      loadVocab().then(() => {
+        const open = (st.vocab?.categories || [])
+          .filter(([, list]) => list.some((t) => st.tags.includes(t.name)))
+          .map(([cat]) => cat);
+        if (!open.length) return;
+        st.openCats = new Set(open);
+        render({ rail: true });
+      });
+    },
     render,
     state: () => st
   };
