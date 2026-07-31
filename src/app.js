@@ -3,7 +3,7 @@
 
 /* ———————————————————— state ———————————————————— */
 let library = [];
-let currentView = 'all';           // 'all' | 'airing' | 'dubbed'
+let currentView = 'home';           // Home is the landing screen; Library is the grid           // 'all' | 'airing' | 'dubbed'
 let detailId = null;               // library record (franchise root) on the detail screen
 let viewId = null;                 // franchise member currently viewed on that screen
 const peekCache = new Map();       // media id -> slim record for non-library seasons
@@ -43,7 +43,7 @@ const RELATION_LABEL = {
   SPIN_OFF: 'Spin-off', ALTERNATIVE: 'Alt', SUMMARY: 'Summary', PARENT: 'Parent'
 };
 const VIEW_LABEL = {
-  all: 'Library', airing: 'Airing now', dubbed: 'English dub', unwatched: 'Unwatched',
+  home: 'Home', all: 'Library', airing: 'Airing now', dubbed: 'English dub', unwatched: 'Unwatched',
   favourites: 'Favourites', discover: 'Discover', announce: 'Announcements',
   browse: 'Browse'
 };
@@ -928,7 +928,7 @@ function bbRestart() {
 
 /* ghost: everything airing this week as one compact rail on the home view */
 function airRailHTML() {
-  if (currentView !== 'all') return '';
+  if (currentView !== 'home') return '';
   const seen = new Set();
   const entries = [];
   for (const g of groupEntries(viewFiltered())) {
@@ -1010,7 +1010,8 @@ function nextUp(root) {
   return null;
 }
 function continueRailHTML() {
-  if (currentView !== 'all') return '';
+  /* these two moved from Library to Home in the split */
+  if (currentView !== 'home') return '';
   const rows = groupEntries(library).map((g) => {
     const p = showProgress(g.rep);
     if (!(p.done > 0 && p.total > 0 && p.done < p.total)) return null;
@@ -1964,6 +1965,16 @@ function tagChipsHTML() {
 
 /* the ghost topbar: search + sort/source/genre dropdowns in one sticky strip */
 function topbarHTML() {
+  /* Home has no grid, so filter/sort/genre/tag controls there act on nothing.
+     Keep the bar for the count and layout, drop the dead controls. */
+  if (currentView === 'home') {
+    const n = groupEntries(library).length;
+    /* .bar-count is the shelf bar's own class and already carries
+       margin-left:auto, so it needs no spacer beside it */
+    return `<div class="shelf-bar home-bar">
+      <span class="bar-count">${esc(VIEW_LABEL.home)} · ${n} SHOW${n === 1 ? '' : 'S'}</span>
+    </div>`;
+  }
   const genres = genreIndex();
   const shows = groupEntries(viewFiltered()).length;
   const sortLabel = (SORTS.find(([k]) => k === sortMode) || [])[1] || 'Airdate';
@@ -2180,17 +2191,28 @@ function renderShelf() {
     bbRestart();
     return;
   }
+  /* ——— Home and Library are different questions ———
+     They used to be one screen: hero, then Continue watching, then On air,
+     then the grid. Measured, the grid began at 1154px on a 1400x900 window
+     and 1334px at 4K — so opening the LIBRARY showed no library at all
+     without scrolling, at any normal size, and only ~2 rows on a 4K panel.
+
+     Home answers "what should I watch now" and keeps the hero and the rails.
+     Library answers "what do I own" and starts at the grid. Shrinking could
+     never have fixed this: two rows above the fold at 900px needs the grid
+     to start by ~400px, and the hero alone is 380-560. */
+  const isHome = currentView === 'home';
+  const isLib = currentView === 'all';
   patchHTML(shelfScreen, `
     ${library.length ? `
     ${topbarHTML()}
-    ${billboardHTML()}
-    <div class="shelf-layout">
+    ${isLib ? '' : billboardHTML()}
+    <div class="shelf-layout${isHome ? ' is-home' : ''}">
       <div class="shelf-main">
-        ${chipsRowHTML()}
+        ${isHome ? '' : chipsRowHTML()}
         ${currentView === 'airing' ? calendarHTML() : ''}
-        ${continueRailHTML()}
-        ${airRailHTML()}
-        ${shelfGridHTML()}
+        ${isLib ? '' : continueRailHTML() + airRailHTML()}
+        ${isHome ? '' : shelfGridHTML()}
       </div>
     </div>` : `<div class="shelf-pad">${shelfGridHTML()}</div>`}
   `);
